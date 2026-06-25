@@ -287,8 +287,8 @@
     {
         public string DisplayText { get; set; } = "";
         public bool   TypingDone  { get; set; }
-        // runtime callbacks
-        public HWebProto.Models.SelectionDto? Source { get; set; }
+        public HWebProto.Models.SelectionDto? Source  { get; set; }
+        public Action? OnClick    { get; set; }
     }
 
     // ── State ────────────────────────────────────────────────────────────────
@@ -493,6 +493,10 @@
     {
         if (idx >= _currentSelections.Count) return;
         var sel = _currentSelections[idx];
+
+        // 데모 버튼처럼 커스텀 OnClick이 있으면 그것만 실행
+        if (sel.OnClick != null) { sel.OnClick(); return; }
+
         var src = sel.Source;
         _showSelections = false;
         _visibleSelCount = 0;
@@ -565,8 +569,8 @@
         // 데모 선택지
         _currentSelections = new List<SelectionItem>
         {
-            new() { DisplayText = "📦 데이터 불러오기",  TypingDone = true, Source = null },
-            new() { DisplayText = "📊 스탯 보기",         TypingDone = true, Source = null },
+            new() { DisplayText = "📦 데이터 불러오기", TypingDone = true, OnClick = () => Nav.NavigateTo("import") },
+            new() { DisplayText = "📊 스탯 보기",        TypingDone = true, OnClick = () => Nav.NavigateTo("status") },
         };
         _ = Task.Delay(1200).ContinueWith(_ =>
         {
