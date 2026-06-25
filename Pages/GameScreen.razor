@@ -34,7 +34,7 @@
             }
         </div>
         <button class="hud-inv-btn" @onclick="OpenInventory" title="인벤토리">🎒</button>
-        <button class="hud-inv-btn" @onclick='() => Nav.NavigateTo("/status")' title="스탯">📊</button>
+        <button class="hud-inv-btn" @onclick='() => Nav.NavigateTo("status")' title="스탯">📊</button>
     </div>
 </div>
 
@@ -578,8 +578,8 @@
 
     void ChooseDemoSelection(int idx)
     {
-        if (idx == 0) Nav.NavigateTo("/import");
-        if (idx == 1) Nav.NavigateTo("/status");
+        if (idx == 0) Nav.NavigateTo("import");
+        if (idx == 1) Nav.NavigateTo("status");
     }
 
     // ── Battle ───────────────────────────────────────────────────────────────
@@ -766,7 +766,7 @@
     }
 
     // ── Game Over ────────────────────────────────────────────────────────────
-    void RestartGame() => Nav.NavigateTo("/import");
+    void RestartGame() => Nav.NavigateTo("import");
 
     // ── Scroll to bottom ─────────────────────────────────────────────────────
     async Task ScrollToBottomAsync()

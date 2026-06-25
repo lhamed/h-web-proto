@@ -242,9 +242,9 @@
         if (_victory && GSS.VictoryEventKey > 0)
         {
             GSS.CurrentEventKey = GSS.VictoryEventKey;
-            Nav.NavigateTo("/event");
+            Nav.NavigateTo("event");
         }
-        else Nav.NavigateTo("/");
+        else Nav.NavigateTo("");
     }
 
     void GoToDefeat()
@@ -252,9 +252,9 @@
         if (GSS.DefeatEventKey > 0)
         {
             GSS.CurrentEventKey = GSS.DefeatEventKey;
-            Nav.NavigateTo("/event");
+            Nav.NavigateTo("event");
         }
-        else Nav.NavigateTo("/");
+        else Nav.NavigateTo("");
     }
 
     void AddLog(string text, string cls)

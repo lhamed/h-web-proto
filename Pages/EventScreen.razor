@@ -107,7 +107,7 @@ else
     <div class="gameover-overlay">
         <div class="gameover-title">GAME OVER</div>
         <div class="gameover-sub">쓰러졌다...</div>
-        <button class="gameover-retry" @onclick='() => Nav.NavigateTo("/")'>처음으로</button>
+        <button class="gameover-retry" @onclick='() => Nav.NavigateTo("")'>처음으로</button>
     </div>
 }
 
@@ -226,7 +226,7 @@ else
             }
             else
             {
-                Nav.NavigateTo("/battle");
+                Nav.NavigateTo("battle");
             }
             return;
         }
@@ -257,7 +257,7 @@ else
         _popupVisible = false;
         if (_nextEventKey == -1)
         {
-            Nav.NavigateTo("/battle");
+            Nav.NavigateTo("battle");
             return;
         }
         if (_allDone || _event?.ContentBlocks.Count <= _blockIdx + 1)
@@ -272,7 +272,7 @@ else
             else
             {
                 // 이벤트 체인 종료 → 홈
-                Nav.NavigateTo("/");
+                Nav.NavigateTo("");
             }
         }
         else
