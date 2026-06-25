@@ -1,0 +1,174 @@
+@page "/event"
+
+<HudTop Hp="_hp" MaxHp="6" Mental="_mental" MaxMental="10" Level="_level" />
+
+<div class="screen">
+<div class="event-screen">
+    <!-- 배경 / 씬 영역 -->
+    <div class="event-bg" @onclick="Advance" style="cursor:pointer">
+        <div class="event-bg-overlay"></div>
+        <div class="event-scene-label">📍 @_scenes[_sceneIdx].Location</div>
+
+        <!-- 씬 분위기 아이콘 -->
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);font-size:80px;opacity:0.15;pointer-events:none;user-select:none">
+            @_scenes[_sceneIdx].BgIcon
+        </div>
+    </div>
+
+    <!-- 콘텐츠 패널 -->
+    <div class="event-content-panel">
+        <div class="event-scroll-area">
+            @foreach (var item in _visibleItems)
+            {
+                @if (item.Type == "narration")
+                {
+                    <div class="narration-text">@item.Text<span class="typewriter-cursor" style="@(item.Done?"display:none":"")"></span></div>
+                }
+                else if (item.Type == "dialogue")
+                {
+                    <div class="dialogue-box">
+                        <div class="dialogue-portrait">@item.Portrait</div>
+                        <div class="dialogue-bubble">
+                            <div class="dialogue-speaker">@item.Speaker</div>
+                            <div class="dialogue-text">@item.Text<span class="typewriter-cursor" style="@(item.Done?"display:none":"")"></span></div>
+                        </div>
+                    </div>
+                }
+                else if (item.Type == "image")
+                {
+                    <div class="image-content" style="font-size:60px">@item.Portrait</div>
+                }
+            }
+        </div>
+        @if (_currentIndex < _scenes[_sceneIdx].Items.Length && !_showSelections)
+        {
+            <div class="event-advance-hint">▼ 화면을 탭하세요</div>
+        }
+    </div>
+
+    <!-- 선택지 -->
+    @if (_showSelections)
+    {
+        <div class="selections-panel">
+            @foreach (var sel in _scenes[_sceneIdx].Selections)
+            {
+                var s = sel;
+                <button class="selection-btn" @onclick="() => SelectChoice(s)">
+                    @s.Text
+                    <span class="selection-arrow">▶</span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</div>
+
+<!-- 팝업 -->
+<PopupOverlay Visible="_popupVisible" Title="_popupTitle" Message="_popupMsg"
+              ConfirmText="확인" OnConfirm="ClosePopup" />
+
+@code {
+    int _hp = 5, _mental = 8, _level = 3;
+    int _sceneIdx = 0, _currentIndex = 0;
+    bool _showSelections, _popupVisible;
+    string _popupTitle = "", _popupMsg = "";
+
+    record ContentItem(string Type, string Text, string Speaker = "", string Portrait = "", bool Done = false);
+    record SelectionItem(string Text, string ResultTitle, string ResultMsg);
+    record Scene(string Location, string BgIcon, ContentItem[] Items, SelectionItem[] Selections);
+
+    readonly Scene[] _scenes =
+    {
+        new("낡은 여관 — 2층 복도", "🏚",
+            new ContentItem[]
+            {
+                new("narration", "삐걱거리는 복도를 걷다 방문 앞에서 멈춘다. 문 아래로 희미한 빛이 새어나온다.", Done:false),
+                new("dialogue",  "잠깐만요, 거기 누구 있어요?", "여관 주인", "👴"),
+                new("narration", "문 너머에서 낮고 거친 목소리가 들려온다.", Done:false),
+                new("dialogue",  "...들어오지 마시오. 이건 당신이 알아야 할 것들이오.", "의문의 손님", "🧔"),
+                new("image",     "", "", "📜"),
+                new("dialogue",  "이 편지를 읽었다면 이미 늦은 것일지도 모르오.", "의문의 손님", "🧔"),
+            },
+            new SelectionItem[]
+            {
+                new("문을 열고 들어간다", "용기", "당신은 망설임 없이 문을 열었다. 방 안에는 아무도 없었다."),
+                new("조용히 귀를 기울인다", "신중함", "발소리가 멀어지는 것이 들렸다. 그는 이미 떠난 것이었다."),
+                new("자리를 피한다",        "회피",   "알 수 없는 불안감이 등 뒤를 따라왔다."),
+            }),
+
+        new("시장 골목 — 황혼", "🏮",
+            new ContentItem[]
+            {
+                new("narration", "해가 기울며 시장은 마지막 손님들로 분주하다."),
+                new("dialogue",  "이봐요, 당신도 소문 들었소?", "행인", "👤"),
+                new("narration", "그는 목소리를 낮추며 몸을 가까이 기울였다."),
+                new("dialogue",  "북쪽 숲에서 이상한 빛이 보였다는군요. 사흘째입니다.", "행인", "👤"),
+            },
+            new SelectionItem[]
+            {
+                new("소문을 더 캐낸다",    "정보 수집", "행인은 오래된 지도 한 장을 꺼내 보였다."),
+                new("무시하고 지나친다",   "무관심",    "무언가를 놓친 것 같은 느낌이 남았다."),
+            }),
+    };
+
+    List<ContentItem> _visibleItems = new();
+
+    protected override void OnInitialized() => ShowNextItem();
+
+    void ShowNextItem()
+    {
+        var items = _scenes[_sceneIdx].Items;
+        if (_currentIndex >= items.Length)
+        {
+            _showSelections = true;
+            return;
+        }
+        var item = items[_currentIndex] with { Done = false };
+        _visibleItems.Add(item);
+        _currentIndex++;
+
+        // 타이핑 시뮬레이션: 짧은 딜레이 후 Done 처리
+        _ = MarkDoneAsync(_visibleItems.Count - 1);
+    }
+
+    async Task MarkDoneAsync(int idx)
+    {
+        int ms = Math.Min(_visibleItems[idx].Text.Length * 40, 2000);
+        await Task.Delay(ms);
+        _visibleItems[idx] = _visibleItems[idx] with { Done = true };
+        StateHasChanged();
+    }
+
+    void Advance()
+    {
+        if (_showSelections) return;
+        var last = _visibleItems.LastOrDefault();
+        if (last != null && !last.Done)
+        {
+            // 스킵: 마지막 항목 즉시 완료
+            _visibleItems[^1] = last with { Done = true };
+        }
+        else
+        {
+            ShowNextItem();
+        }
+    }
+
+    void SelectChoice(SelectionItem sel)
+    {
+        _showSelections = false;
+        _popupTitle  = sel.ResultTitle;
+        _popupMsg    = sel.ResultMsg;
+        _popupVisible = true;
+    }
+
+    void ClosePopup()
+    {
+        _popupVisible = false;
+        // 다음 씬으로
+        _sceneIdx = (_sceneIdx + 1) % _scenes.Length;
+        _currentIndex = 0;
+        _visibleItems.Clear();
+        ShowNextItem();
+    }
+}

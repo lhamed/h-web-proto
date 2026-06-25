@@ -1,0 +1,70 @@
+@page "/"
+
+<HudTop Hp="5" MaxHp="6" Mental="8" MaxMental="10" Level="3" />
+
+<div class="screen">
+    <div style="background:linear-gradient(135deg,#1a1020 0%,#0d0d18 100%);padding:28px 20px 20px;text-align:center;border-bottom:1px solid var(--border)">
+        <div style="font-size:48px;margin-bottom:8px">🏰</div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:4px;color:var(--accent);margin-bottom:4px">HOHEUP</div>
+        <div style="font-size:12px;color:var(--text-muted);letter-spacing:2px">Web Prototype</div>
+    </div>
+
+    <div style="padding:16px;display:flex;flex-direction:column;gap:20px">
+
+        <div>
+            <div class="section-title">화면 목록</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                @foreach (var pg in _pages)
+                {
+                    var p = pg;
+                    <a href="@p.Href" style="text-decoration:none">
+                        <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 14px;display:flex;flex-direction:column;gap:6px;transition:border-color 0.15s">
+                            <div style="font-size:28px">@p.Icon</div>
+                            <div style="font-size:13px;font-weight:700;color:var(--text)">@p.Name</div>
+                            <div style="font-size:11px;color:var(--text-muted);line-height:1.4">@p.Desc</div>
+                        </div>
+                    </a>
+                }
+            </div>
+        </div>
+
+        <div>
+            <div class="section-title">현재 상태</div>
+            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:12px;color:var(--text-dim)">플레이어</span>
+                    <span style="font-size:13px;font-weight:700;color:var(--text)">🧝 모험가 Lv.3</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:12px;color:var(--text-dim)">HP</span>
+                    <div style="display:flex;gap:2px">
+                        @for (int i = 0; i < 6; i++)
+                        {
+                            <div style="width:10px;height:14px;border-radius:2px;background:@(i<5?"var(--hp-color)":"rgba(255,255,255,0.08)")"></div>
+                        }
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:12px;color:var(--text-dim)">위치</span>
+                    <span style="font-size:12px;color:var(--accent)">📍 낡은 여관</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="padding-bottom:8px;text-align:center;font-size:11px;color:var(--text-muted)">
+            Hoheup Web Proto · 디자인 시안
+        </div>
+    </div>
+</div>
+
+@code {
+    record PageLink(string Href, string Icon, string Name, string Desc);
+    readonly List<PageLink> _pages = new()
+    {
+        new("/event",     "📜", "이벤트 화면",  "서사·대화·선택지"),
+        new("/battle",    "⚔️", "전투 화면",    "실시간 전투 UI"),
+        new("/inventory", "🎒", "인벤토리",     "아이템 소지 목록"),
+        new("/equipment", "🛡️", "장비 화면",    "7슬롯 장착 UI"),
+        new("/status",    "📊", "스탯 화면",    "능력치·바이탈"),
+    };
+}

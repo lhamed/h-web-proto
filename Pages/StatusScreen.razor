@@ -1,0 +1,79 @@
+@page "/status"
+
+<HudTop Hp="_hp" MaxHp="_maxHp" Mental="_mental" MaxMental="10" Level="_level" />
+
+<div class="screen">
+<div class="status-screen">
+    <div class="status-avatar">🧝</div>
+    <div class="status-name">플레이어</div>
+    <div class="status-class">모험가 · Lv.@_level</div>
+
+    <!-- 생명력 / 정신력 / 경험치 -->
+    <div class="section-title">바이탈</div>
+    <div style="margin-bottom:14px">
+        <div class="vitals-bar-row">
+            <span class="vitals-bar-label">HP</span>
+            <div class="vitals-bar-track"><div class="vitals-bar-fill hp" style="width:@(_hp*100/_maxHp)%"></div></div>
+            <span class="vitals-bar-num">@_hp / @_maxHp</span>
+        </div>
+        <div class="vitals-bar-row">
+            <span class="vitals-bar-label">정신력</span>
+            <div class="vitals-bar-track"><div class="vitals-bar-fill mental" style="width:@(_mental*100/10)%"></div></div>
+            <span class="vitals-bar-num">@_mental / 10</span>
+        </div>
+        <div class="vitals-bar-row">
+            <span class="vitals-bar-label">경험치</span>
+            <div class="vitals-bar-track"><div class="vitals-bar-fill exp" style="width:@(_expPct)%"></div></div>
+            <span class="vitals-bar-num">@_exp / @_nextExp</span>
+        </div>
+    </div>
+
+    <!-- 능력치 -->
+    <div class="section-title">능력치 <span style="margin-left:auto;font-size:11px;color:var(--accent)">잔여 포인트: @_freePoints</span></div>
+    <div class="stat-grid">
+        @foreach (var stat in _stats)
+        {
+            var s = stat;
+            <div class="stat-card">
+                <div class="stat-icon">@s.Icon</div>
+                <div>
+                    <div class="stat-label">@s.Name</div>
+                    <div class="stat-value">@s.Value</div>
+                </div>
+                <button class="stat-invest-btn" @onclick="() => Invest(s)" disabled="@(_freePoints <= 0)">+</button>
+            </div>
+        }
+    </div>
+</div>
+</div>
+
+<PopupOverlay Visible="_popupVisible" Title="레벨 업!" Message="@_popupMsg"
+              ConfirmText="계속" OnConfirm="() => _popupVisible = false" />
+
+@code {
+    int _level = 3, _hp = 5, _maxHp = 6, _mental = 8;
+    int _exp = 70, _nextExp = 100, _freePoints = 2;
+    int _expPct => _exp * 100 / _nextExp;
+    bool _popupVisible;
+    string _popupMsg = "";
+
+    class Stat { public string Name=""; public string Icon=""; public int Value; }
+
+    List<Stat> _stats = new()
+    {
+        new Stat { Name="힘",      Icon="💪", Value=10 },
+        new Stat { Name="민첩",    Icon="🏃", Value=12 },
+        new Stat { Name="건강",    Icon="❤️", Value=9  },
+        new Stat { Name="지성",    Icon="🧠", Value=14 },
+        new Stat { Name="지혜",    Icon="🦉", Value=11 },
+        new Stat { Name="매력",    Icon="✨", Value=8  },
+    };
+
+    void Invest(Stat s)
+    {
+        if (_freePoints <= 0) return;
+        s.Value++;
+        _freePoints--;
+        if (s.Name == "건강") _maxHp++;
+    }
+}

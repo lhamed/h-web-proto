@@ -1,0 +1,40 @@
+@* 상단 HUD — HP(배터리) / Mental / Level *@
+<div class="hud-top">
+    <div class="hud-section">
+        <span class="hud-label">HP</span>
+        <div class="battery-wrap">
+            @for (int i = 0; i < MaxHp; i++)
+            {
+                int idx = i;
+                bool filled = idx < Hp;
+                bool isLast = idx == Hp - 1;
+                <div class="battery-cell @(!filled ? "empty" : "") @(filled && isLast && Hp <= 2 ? "blink" : "")"></div>
+            }
+        </div>
+    </div>
+
+    <div class="hud-section center">
+        <div class="hud-level">
+            <span>Lv</span>
+            <span class="hud-level-num">@Level</span>
+        </div>
+    </div>
+
+    <div class="hud-section right">
+        <span class="hud-label">정신력</span>
+        <div class="mental-bar-wrap">
+            @for (int i = 0; i < MaxMental; i++)
+            {
+                <div class="mental-cell @(i >= Mental ? "empty" : "")"></div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Hp      { get; set; } = 5;
+    [Parameter] public int MaxHp   { get; set; } = 6;
+    [Parameter] public int Mental  { get; set; } = 8;
+    [Parameter] public int MaxMental { get; set; } = 10;
+    [Parameter] public int Level   { get; set; } = 1;
+}

@@ -1,0 +1,36 @@
+@* UIPopup_OneButton / UIPopup_TwoButton 통합 컴포넌트 *@
+@if (Visible)
+{
+    <div class="popup-overlay" @onclick="OnOverlayClick">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <div class="popup-title">@Title</div>
+            <div class="popup-message">@Message</div>
+            <div class="popup-buttons">
+                <button class="popup-btn confirm" @onclick="OnConfirmClick">@ConfirmText</button>
+                @if (ShowCancel)
+                {
+                    <button class="popup-btn cancel" @onclick="OnCancelClick">@CancelText</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool   Visible     { get; set; }
+    [Parameter] public string Title       { get; set; } = "";
+    [Parameter] public string Message     { get; set; } = "";
+    [Parameter] public string ConfirmText { get; set; } = "확인";
+    [Parameter] public bool   ShowCancel  { get; set; }
+    [Parameter] public string CancelText  { get; set; } = "취소";
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel  { get; set; }
+    [Parameter] public bool CloseOnOverlay { get; set; } = true;
+
+    async Task OnConfirmClick() => await OnConfirm.InvokeAsync();
+    async Task OnCancelClick()  => await OnCancel.InvokeAsync();
+    async Task OnOverlayClick()
+    {
+        if (CloseOnOverlay) await OnCancel.InvokeAsync();
+    }
+}

@@ -1,0 +1,79 @@
+@page "/equipment"
+
+<HudTop Hp="5" MaxHp="6" Mental="8" MaxMental="10" Level="3" />
+
+<div class="screen">
+<div class="equip-screen">
+    <div class="equip-title">⚔️ 장비</div>
+
+    <div class="equip-body-grid">
+        @foreach (var slot in _slots)
+        {
+            var s = slot;
+            <div class="equip-slot-cell @(s.Item != null ? "has-item" : "")"
+                 data-slot="@s.Key" @onclick="() => SelectSlot(s)">
+                <div class="slot-icon">@(s.Item?.Icon ?? s.EmptyIcon)</div>
+                <div class="slot-label">@s.Label</div>
+                @if (s.Item != null)
+                {
+                    <div class="slot-name">@s.Item.Name</div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_selected != null)
+    {
+        <div class="item-detail">
+            <div class="item-detail-name">@_selected.Label 슬롯</div>
+            @if (_selected.Item != null)
+            {
+                <div class="item-detail-desc">@_selected.Item.Icon @_selected.Item.Name</div>
+                <div class="item-tags">
+                    <span class="tag tag-gold">장착 중</span>
+                    <span class="tag tag-dim">@_selected.Label</span>
+                </div>
+                <button class="game-btn secondary" @onclick="Unequip">해제하기</button>
+            }
+            else
+            {
+                <div class="item-detail-desc" style="color:var(--text-muted)">비어 있습니다.</div>
+            }
+        </div>
+    }
+</div>
+</div>
+
+<PopupOverlay Visible="_popupVisible" Title="장비 해제" Message="@_popupMsg"
+              ConfirmText="확인" OnConfirm="() => _popupVisible = false" />
+
+@code {
+    record EquipItem(string Name, string Icon);
+    class Slot { public string Key=""; public string Label=""; public string EmptyIcon=""; public EquipItem? Item; }
+
+    Slot? _selected;
+    bool _popupVisible;
+    string _popupMsg = "";
+
+    List<Slot> _slots = new()
+    {
+        new Slot { Key="head",  Label="머리",   EmptyIcon="👒", Item = null },
+        new Slot { Key="left",  Label="왼손",   EmptyIcon="🤚", Item = new("철 방패","🛡️") },
+        new Slot { Key="body",  Label="몸통",   EmptyIcon="🥋", Item = new("가죽 갑옷","🥋") },
+        new Slot { Key="right", Label="오른손", EmptyIcon="✋", Item = new("낡은 검","⚔️") },
+        new Slot { Key="shoes", Label="신발",   EmptyIcon="👟", Item = null },
+        new Slot { Key="ring1", Label="반지1",  EmptyIcon="💍", Item = new("오래된 반지","💍") },
+        new Slot { Key="ring2", Label="반지2",  EmptyIcon="💍", Item = null },
+    };
+
+    void SelectSlot(Slot s) => _selected = _selected?.Key == s.Key ? null : s;
+
+    void Unequip()
+    {
+        if (_selected?.Item == null) return;
+        _popupMsg = $"{_selected.Item.Name}을(를) 해제했습니다.";
+        _selected.Item = null;
+        _popupVisible = true;
+        _selected = null;
+    }
+}
