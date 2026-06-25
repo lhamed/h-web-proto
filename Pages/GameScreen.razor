@@ -53,7 +53,7 @@
 <div class="content-scroll-panel" @onclick="OnTap" @ref="_scrollEl">
     @foreach (var item in _contentItems)
     {
-        @if (item.Type == "Narration")
+        @if (item.Type == "Narration" || item.Type == "Content")
         {
             <div class="content-narration">
                 @item.DisplayText
@@ -538,12 +538,12 @@
         if (_evt == null) return 0;
         return _evt.NextEventMode switch
         {
-            "First"           => _evt.NextEventKeys?.FirstOrDefault() ?? 0,
-            "Random"          => _evt.NextEventKeys?.Count > 0
-                                 ? _evt.NextEventKeys[_rng.Next(_evt.NextEventKeys.Count)] : 0,
-            "ConditionalList" => _evt.NextEventEntries?
-                                 .FirstOrDefault(e => e.Conditions.All(c => GSS.CheckCondition(c)))
-                                 ?.EventKey ?? 0,
+            "First" or "Specific"     => _evt.NextEventKeys?.FirstOrDefault() ?? 0,
+            "Random"                  => _evt.NextEventKeys?.Count > 0
+                                         ? _evt.NextEventKeys[_rng.Next(_evt.NextEventKeys.Count)] : 0,
+            "ConditionalList" or "Conditional" => _evt.NextEventEntries?
+                                         .FirstOrDefault(e => e.Conditions.All(c => GSS.CheckCondition(c)))
+                                         ?.EventKey ?? 0,
             _ => _evt.NextEventKeys?.FirstOrDefault() ?? 0
         };
     }

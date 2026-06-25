@@ -116,13 +116,13 @@ namespace HWebProto.Services
             };
             return cond.Op switch
             {
-                "Equal"              => actual == cond.CompareValue,
-                "NotEqual"           => actual != cond.CompareValue,
-                "GreaterThan"        => actual >  cond.CompareValue,
-                "GreaterThanOrEqual" => actual >= cond.CompareValue,
-                "LessThan"           => actual <  cond.CompareValue,
-                "LessThanOrEqual"    => actual <= cond.CompareValue,
-                _                    => true
+                "Equal"                          => actual == cond.CompareValue,
+                "NotEqual"                       => actual != cond.CompareValue,
+                "Greater"     or "GreaterThan"        => actual >  cond.CompareValue,
+                "GreaterEqual" or "GreaterThanOrEqual" => actual >= cond.CompareValue,
+                "Less"        or "LessThan"           => actual <  cond.CompareValue,
+                "LessEqual"   or "LessThanOrEqual"    => actual <= cond.CompareValue,
+                _                                => true
             };
         }
 
@@ -205,11 +205,11 @@ namespace HWebProto.Services
 
         static int ApplyOp(int cur, int value, string op) => op switch
         {
-            "Add"      => cur + value,
-            "Subtract" => cur - value,
-            "Set"      => value,
-            "Multiply" => cur * value,
-            _          => cur + value
+            "Add"             => cur + value,
+            "Subtract"        => cur - value,
+            "Set" or "Assign" => value,
+            "Multiply"        => cur * value,
+            _                 => cur + value
         };
 
         void TryLevelUp()
