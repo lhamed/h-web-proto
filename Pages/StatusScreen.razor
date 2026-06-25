@@ -1,49 +1,91 @@
 @page "/status"
+@inject GameDataService GDS
+@inject GameStateService GSS
+@implements IDisposable
 
-<HudTop Hp="_hp" MaxHp="_maxHp" Mental="_mental" MaxMental="10" Level="_level" />
+<HudTop Hp="@GSS.Hp" MaxHp="@GSS.MaxHp" Mental="@GSS.Mental" MaxMental="@GSS.MaxMental" Level="@GSS.Level" />
 
 <div class="screen">
 <div class="status-screen">
     <div class="status-avatar">🧝</div>
-    <div class="status-name">플레이어</div>
-    <div class="status-class">모험가 · Lv.@_level</div>
+    @if (GDS.IsLoaded && GDS.Data!.GameUnits.Count > 0)
+    {
+        <div class="status-name">@GDS.L(GDS.Data!.GameUnits[0].NameKey)</div>
+    }
+    else
+    {
+        <div class="status-name">플레이어</div>
+    }
+    <div class="status-class">모험가 · Lv.@GSS.Level</div>
 
-    <!-- 생명력 / 정신력 / 경험치 -->
+    <!-- 바이탈 -->
     <div class="section-title">바이탈</div>
     <div style="margin-bottom:14px">
         <div class="vitals-bar-row">
             <span class="vitals-bar-label">HP</span>
-            <div class="vitals-bar-track"><div class="vitals-bar-fill hp" style="width:@(_hp*100/_maxHp)%"></div></div>
-            <span class="vitals-bar-num">@_hp / @_maxHp</span>
+            <div class="vitals-bar-track">
+                <div class="vitals-bar-fill hp" style="width:@(GSS.MaxHp>0?GSS.Hp*100/GSS.MaxHp:0)%"></div>
+            </div>
+            <span class="vitals-bar-num">@GSS.Hp / @GSS.MaxHp</span>
         </div>
         <div class="vitals-bar-row">
             <span class="vitals-bar-label">정신력</span>
-            <div class="vitals-bar-track"><div class="vitals-bar-fill mental" style="width:@(_mental*100/10)%"></div></div>
-            <span class="vitals-bar-num">@_mental / 10</span>
+            <div class="vitals-bar-track">
+                <div class="vitals-bar-fill mental" style="width:@(GSS.MaxMental>0?GSS.Mental*100/GSS.MaxMental:0)%"></div>
+            </div>
+            <span class="vitals-bar-num">@GSS.Mental / @GSS.MaxMental</span>
         </div>
         <div class="vitals-bar-row">
             <span class="vitals-bar-label">경험치</span>
-            <div class="vitals-bar-track"><div class="vitals-bar-fill exp" style="width:@(_expPct)%"></div></div>
-            <span class="vitals-bar-num">@_exp / @_nextExp</span>
+            <div class="vitals-bar-track">
+                <div class="vitals-bar-fill exp" style="width:@(GSS.NextExp>0?GSS.Exp*100/GSS.NextExp:0)%"></div>
+            </div>
+            <span class="vitals-bar-num">@GSS.Exp / @GSS.NextExp</span>
         </div>
     </div>
 
     <!-- 능력치 -->
-    <div class="section-title">능력치 <span style="margin-left:auto;font-size:11px;color:var(--accent)">잔여 포인트: @_freePoints</span></div>
+    <div class="section-title">
+        능력치
+        @if (GSS.FreePoints > 0)
+        {
+            <span class="tag tag-gold" style="margin-left:6px">잔여 @(GSS.FreePoints)pt</span>
+        }
+    </div>
     <div class="stat-grid">
-        @foreach (var stat in _stats)
+        @foreach (var stat in _statDefs)
         {
             var s = stat;
+            int val = s.Get(GSS);
             <div class="stat-card">
                 <div class="stat-icon">@s.Icon</div>
-                <div>
+                <div style="flex:1">
                     <div class="stat-label">@s.Name</div>
-                    <div class="stat-value">@s.Value</div>
+                    <div class="stat-value">@val</div>
                 </div>
-                <button class="stat-invest-btn" @onclick="() => Invest(s)" disabled="@(_freePoints <= 0)">+</button>
+                <button class="stat-invest-btn" @onclick="() => Invest(s.Key)" disabled="@(GSS.FreePoints<=0)">+</button>
             </div>
         }
     </div>
+
+    <!-- 장착 장비 요약 -->
+    @if (GSS.Equipment.Count > 0 && GDS.IsLoaded)
+    {
+        <div class="section-title">장착 장비</div>
+        <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;display:flex;flex-direction:column;gap:6px">
+            @foreach (var (slot, itemKey) in GSS.Equipment)
+            {
+                var item = GDS.GetItem(itemKey);
+                if (item == null) continue;
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:11px;color:var(--text-muted)">@slot</span>
+                    <span style="font-size:12px;color:var(--text)">@GDS.L(item.NameKey)</span>
+                </div>
+            }
+        </div>
+    }
+
+    <div style="height:16px"></div>
 </div>
 </div>
 
@@ -51,29 +93,42 @@
               ConfirmText="계속" OnConfirm="() => _popupVisible = false" />
 
 @code {
-    int _level = 3, _hp = 5, _maxHp = 6, _mental = 8;
-    int _exp = 70, _nextExp = 100, _freePoints = 2;
-    int _expPct => _exp * 100 / _nextExp;
     bool _popupVisible;
     string _popupMsg = "";
+    int _prevLevel;
 
-    class Stat { public string Name=""; public string Icon=""; public int Value; }
-
-    List<Stat> _stats = new()
+    record StatDef(string Key, string Name, string Icon, Func<GameStateService, int> Get);
+    readonly StatDef[] _statDefs =
     {
-        new Stat { Name="힘",      Icon="💪", Value=10 },
-        new Stat { Name="민첩",    Icon="🏃", Value=12 },
-        new Stat { Name="건강",    Icon="❤️", Value=9  },
-        new Stat { Name="지성",    Icon="🧠", Value=14 },
-        new Stat { Name="지혜",    Icon="🦉", Value=11 },
-        new Stat { Name="매력",    Icon="✨", Value=8  },
+        new("Strength",     "힘",   "💪", g => g.Strength),
+        new("Dexterity",    "민첩", "🏃", g => g.Dexterity),
+        new("Constitution", "건강", "❤️", g => g.Constitution),
+        new("Intelligence", "지성", "🧠", g => g.Intelligence),
+        new("Wisdom",       "지혜", "🦉", g => g.Wisdom),
+        new("Charisma",     "매력", "✨", g => g.Charisma),
     };
 
-    void Invest(Stat s)
+    protected override void OnInitialized()
     {
-        if (_freePoints <= 0) return;
-        s.Value++;
-        _freePoints--;
-        if (s.Name == "건강") _maxHp++;
+        _prevLevel = GSS.Level;
+        GSS.OnStateChanged += OnGSSChanged;
     }
+
+    void OnGSSChanged()
+    {
+        if (GSS.Level > _prevLevel)
+        {
+            _popupMsg     = $"레벨 {GSS.Level}이 되었습니다!\n능력치 포인트 +2";
+            _popupVisible = true;
+            _prevLevel    = GSS.Level;
+        }
+        StateHasChanged();
+    }
+
+    void Invest(string statKey)
+    {
+        GSS.InvestStat(statKey);
+    }
+
+    public void Dispose() => GSS.OnStateChanged -= OnGSSChanged;
 }

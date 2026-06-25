@@ -1,70 +1,141 @@
 @page "/"
+@inject GameDataService GDS
+@inject GameStateService GSS
+@inject NavigationManager Nav
 
-<HudTop Hp="5" MaxHp="6" Mental="8" MaxMental="10" Level="3" />
+<HudTop Hp="@GSS.Hp" MaxHp="@GSS.MaxHp" Mental="@GSS.Mental" MaxMental="@GSS.MaxMental" Level="@GSS.Level" />
 
 <div class="screen">
-    <div style="background:linear-gradient(135deg,#1a1020 0%,#0d0d18 100%);padding:28px 20px 20px;text-align:center;border-bottom:1px solid var(--border)">
-        <div style="font-size:48px;margin-bottom:8px">🏰</div>
-        <div style="font-size:22px;font-weight:700;letter-spacing:4px;color:var(--accent);margin-bottom:4px">HOHEUP</div>
-        <div style="font-size:12px;color:var(--text-muted);letter-spacing:2px">Web Prototype</div>
-    </div>
-
-    <div style="padding:16px;display:flex;flex-direction:column;gap:20px">
-
-        <div>
-            <div class="section-title">화면 목록</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                @foreach (var pg in _pages)
-                {
-                    var p = pg;
-                    <a href="@p.Href" style="text-decoration:none">
-                        <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 14px;display:flex;flex-direction:column;gap:6px;transition:border-color 0.15s">
-                            <div style="font-size:28px">@p.Icon</div>
-                            <div style="font-size:13px;font-weight:700;color:var(--text)">@p.Name</div>
-                            <div style="font-size:11px;color:var(--text-muted);line-height:1.4">@p.Desc</div>
-                        </div>
-                    </a>
-                }
+    @if (!GDS.IsLoaded)
+    {
+        <!-- 데이터 미로드 상태 -->
+        <div style="padding:40px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:20px">
+            <div style="font-size:60px">🏰</div>
+            <div>
+                <div style="font-size:22px;font-weight:700;letter-spacing:4px;color:var(--accent)">HOHEUP</div>
+                <div style="font-size:12px;color:var(--text-muted);letter-spacing:2px;margin-top:4px">Web Prototype</div>
+            </div>
+            <div style="font-size:14px;color:var(--text-dim);line-height:1.7;max-width:280px;text-align:center">
+                H-Editor에서 내보낸 <strong style="color:var(--accent)">EXPORTED.bytes</strong>를 불러오면 실제 게임 데이터로 플레이할 수 있습니다.
+            </div>
+            <button class="game-btn" style="width:220px;padding:14px;font-size:15px" @onclick='() => Nav.NavigateTo("/import")'>
+                📦 데이터 불러오기
+            </button>
+            <div style="border-top:1px solid var(--border);padding-top:16px;width:100%">
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">또는 데모 화면 둘러보기</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:340px;margin:0 auto">
+                    @foreach (var pg in _pages)
+                    {
+                        var p = pg;
+                        <a href="@p.Href" style="text-decoration:none">
+                            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;text-align:center">
+                                <div style="font-size:22px">@p.Icon</div>
+                                <div style="font-size:11px;color:var(--text-dim);margin-top:4px">@p.Name</div>
+                            </div>
+                        </a>
+                    }
+                </div>
             </div>
         </div>
+    }
+    else
+    {
+        <!-- 데이터 로드됨 — 게임 허브 -->
+        <div style="padding:16px;display:flex;flex-direction:column;gap:16px">
 
-        <div>
-            <div class="section-title">현재 상태</div>
-            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:8px">
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <span style="font-size:12px;color:var(--text-dim)">플레이어</span>
-                    <span style="font-size:13px;font-weight:700;color:var(--text)">🧝 모험가 Lv.3</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <span style="font-size:12px;color:var(--text-dim)">HP</span>
-                    <div style="display:flex;gap:2px">
-                        @for (int i = 0; i < 6; i++)
-                        {
-                            <div style="width:10px;height:14px;border-radius:2px;background:@(i<5?"var(--hp-color)":"rgba(255,255,255,0.08)")"></div>
-                        }
+            <div style="background:linear-gradient(135deg,#1a1020 0%,#0d0d18 100%);border-radius:var(--radius);padding:16px;border:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <div style="font-size:40px">🧝</div>
+                    <div>
+                        <div style="font-size:16px;font-weight:700;color:var(--text)">플레이어</div>
+                        <div style="font-size:12px;color:var(--accent)">Lv.@GSS.Level · EXP @GSS.Exp/@GSS.NextExp</div>
+                        <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
+                            HP @GSS.Hp/@GSS.MaxHp · 정신력 @GSS.Mental/@GSS.MaxMental
+                        </div>
                     </div>
                 </div>
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <span style="font-size:12px;color:var(--text-dim)">위치</span>
-                    <span style="font-size:12px;color:var(--accent)">📍 낡은 여관</span>
+            </div>
+
+            <!-- 메인 액션 -->
+            @if (GDS.Data!.GameEvents.Count > 0)
+            {
+                <button class="game-btn" style="width:100%;padding:14px;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px" @onclick="GoToEvent">
+                    <span>📜</span> 이벤트 진행하기
+                </button>
+            }
+            @if (GDS.Data!.BattleDatas.Count > 0)
+            {
+                <button class="game-btn secondary" style="width:100%;padding:13px;display:flex;align-items:center;justify-content:center;gap:8px" @onclick="GoToBattle">
+                    <span>⚔️</span> 전투 시작
+                </button>
+            }
+
+            <!-- 화면 목록 -->
+            <div>
+                <div class="section-title">화면</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                    @foreach (var pg in _pages)
+                    {
+                        var p = pg;
+                        <a href="@p.Href" style="text-decoration:none">
+                            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;gap:10px;align-items:center">
+                                <div style="font-size:22px">@p.Icon</div>
+                                <div>
+                                    <div style="font-size:13px;font-weight:700;color:var(--text)">@p.Name</div>
+                                    <div style="font-size:10px;color:var(--text-muted)">@p.Desc</div>
+                                </div>
+                            </div>
+                        </a>
+                    }
                 </div>
             </div>
-        </div>
 
-        <div style="padding-bottom:8px;text-align:center;font-size:11px;color:var(--text-muted)">
-            Hoheup Web Proto · 디자인 시안
+            <!-- 데이터 요약 -->
+            <div>
+                <div class="section-title">로드된 데이터</div>
+                <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
+                    @foreach (var (label, count) in new (string, int)[]
+                    {
+                        ("이벤트", GDS.Data!.GameEvents.Count),
+                        ("아이템", GDS.Data!.GameItems.Count),
+                        ("유닛",   GDS.Data!.GameUnits.Count),
+                    })
+                    {
+                        <div>
+                            <div style="font-size:16px;font-weight:700;color:var(--accent)">@count</div>
+                            <div style="font-size:10px;color:var(--text-muted)">@label</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <button class="game-btn secondary" style="width:100%;font-size:12px" @onclick='() => Nav.NavigateTo("/import")'>
+                📦 다른 데이터 불러오기
+            </button>
         </div>
-    </div>
+    }
 </div>
 
 @code {
     record PageLink(string Href, string Icon, string Name, string Desc);
     readonly List<PageLink> _pages = new()
     {
-        new("/event",     "📜", "이벤트 화면",  "서사·대화·선택지"),
-        new("/battle",    "⚔️", "전투 화면",    "실시간 전투 UI"),
-        new("/inventory", "🎒", "인벤토리",     "아이템 소지 목록"),
-        new("/equipment", "🛡️", "장비 화면",    "7슬롯 장착 UI"),
-        new("/status",    "📊", "스탯 화면",    "능력치·바이탈"),
+        new("/event",     "📜", "이벤트",   "서사·대화·선택지"),
+        new("/battle",    "⚔️", "전투",     "턴제 전투"),
+        new("/inventory", "🎒", "인벤토리", "아이템 목록"),
+        new("/equipment", "🛡️", "장비",     "7슬롯 장착"),
+        new("/status",    "📊", "스탯",     "능력치·바이탈"),
     };
+
+    void GoToEvent()
+    {
+        GSS.CurrentEventKey = GDS.FirstEventKey();
+        Nav.NavigateTo("/event");
+    }
+
+    void GoToBattle()
+    {
+        GSS.PendingBattleKey = GDS.FirstBattleKey();
+        Nav.NavigateTo("/battle");
+    }
 }

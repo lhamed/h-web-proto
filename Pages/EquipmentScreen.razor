@@ -1,79 +1,116 @@
 @page "/equipment"
+@inject GameDataService GDS
+@inject GameStateService GSS
 
-<HudTop Hp="5" MaxHp="6" Mental="8" MaxMental="10" Level="3" />
+<HudTop Hp="@GSS.Hp" MaxHp="@GSS.MaxHp" Mental="@GSS.Mental" MaxMental="@GSS.MaxMental" Level="@GSS.Level" />
 
 <div class="screen">
 <div class="equip-screen">
     <div class="equip-title">⚔️ 장비</div>
 
     <div class="equip-body-grid">
-        @foreach (var slot in _slots)
+        @foreach (var (slot, label, emptyIcon) in _slotDefs)
         {
             var s = slot;
-            <div class="equip-slot-cell @(s.Item != null ? "has-item" : "")"
-                 data-slot="@s.Key" @onclick="() => SelectSlot(s)">
-                <div class="slot-icon">@(s.Item?.Icon ?? s.EmptyIcon)</div>
-                <div class="slot-label">@s.Label</div>
-                @if (s.Item != null)
+            bool hasItem = GSS.Equipment.TryGetValue(slot, out long itemKey) && itemKey > 0;
+            string itemName = hasItem ? (GDS.IsLoaded ? GDS.L(GDS.GetItem(itemKey)?.NameKey) : "장착 중") ?? "" : "";
+            <div class="equip-slot-cell @(hasItem?"has-item":"") @(_selectedSlot==slot?"has-item":"")"
+                 data-slot="@slot" @onclick="() => SelectSlot(s)">
+                <div class="slot-icon">@(hasItem ? "✅" : emptyIcon)</div>
+                <div class="slot-label">@label</div>
+                @if (!string.IsNullOrEmpty(itemName))
                 {
-                    <div class="slot-name">@s.Item.Name</div>
+                    <div class="slot-name">@itemName</div>
                 }
             </div>
         }
     </div>
 
-    @if (_selected != null)
+    @if (_selectedSlot != null)
     {
+        bool hasItem = GSS.Equipment.TryGetValue(_selectedSlot, out long equippedKey) && equippedKey > 0;
         <div class="item-detail">
-            <div class="item-detail-name">@_selected.Label 슬롯</div>
-            @if (_selected.Item != null)
+            <div class="item-detail-name">@_slotDefs.FirstOrDefault(s => s.Slot == _selectedSlot).Label 슬롯</div>
+            @if (hasItem)
             {
-                <div class="item-detail-desc">@_selected.Item.Icon @_selected.Item.Name</div>
+                var item = GDS.IsLoaded ? GDS.GetItem(equippedKey) : null;
+                <div class="item-detail-desc">
+                    @if (item != null) { @GDS.L(item.NameKey) }
+                    else               { @("장착 아이템") }
+                </div>
                 <div class="item-tags">
                     <span class="tag tag-gold">장착 중</span>
-                    <span class="tag tag-dim">@_selected.Label</span>
+                    <span class="tag tag-dim">@_selectedSlot</span>
                 </div>
                 <button class="game-btn secondary" @onclick="Unequip">해제하기</button>
             }
             else
             {
                 <div class="item-detail-desc" style="color:var(--text-muted)">비어 있습니다.</div>
+
+                <!-- 해당 슬롯에 장착 가능한 아이템 목록 -->
+                @if (GDS.IsLoaded)
+                {
+                    var compatible = GDS.Data!.GameItems
+                        .Where(i => i.Equippable && GDS.EquipTypeToSlot(i.EquipmentType) == _selectedSlot)
+                        .ToList();
+                    @if (compatible.Count > 0)
+                    {
+                        <div style="margin-top:10px">
+                            <div class="section-title" style="font-size:10px">장착 가능</div>
+                            @foreach (var ci in compatible)
+                            {
+                                var cKey = ci.Key;
+                                <button class="selection-btn" style="margin-bottom:6px" @onclick="() => EquipFromList(cKey)">
+                                    ⚔️ @GDS.L(ci.NameKey)
+                                    <span class="selection-arrow">+</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                }
             }
+            <button class="game-btn secondary" style="margin-top:8px" @onclick="() => _selectedSlot = null">닫기</button>
         </div>
     }
 </div>
 </div>
 
-<PopupOverlay Visible="_popupVisible" Title="장비 해제" Message="@_popupMsg"
-              ConfirmText="확인" OnConfirm="() => _popupVisible = false" />
+<PopupOverlay Visible="_popupVisible" Title="@_popupTitle" Message="@_popupMsg"
+              ConfirmText="확인" OnConfirm="() => { _popupVisible = false; _selectedSlot = null; }" />
 
 @code {
-    record EquipItem(string Name, string Icon);
-    class Slot { public string Key=""; public string Label=""; public string EmptyIcon=""; public EquipItem? Item; }
-
-    Slot? _selected;
+    string? _selectedSlot;
     bool _popupVisible;
-    string _popupMsg = "";
+    string _popupTitle = "", _popupMsg = "";
 
-    List<Slot> _slots = new()
+    readonly (string Slot, string Label, string EmptyIcon)[] _slotDefs =
     {
-        new Slot { Key="head",  Label="머리",   EmptyIcon="👒", Item = null },
-        new Slot { Key="left",  Label="왼손",   EmptyIcon="🤚", Item = new("철 방패","🛡️") },
-        new Slot { Key="body",  Label="몸통",   EmptyIcon="🥋", Item = new("가죽 갑옷","🥋") },
-        new Slot { Key="right", Label="오른손", EmptyIcon="✋", Item = new("낡은 검","⚔️") },
-        new Slot { Key="shoes", Label="신발",   EmptyIcon="👟", Item = null },
-        new Slot { Key="ring1", Label="반지1",  EmptyIcon="💍", Item = new("오래된 반지","💍") },
-        new Slot { Key="ring2", Label="반지2",  EmptyIcon="💍", Item = null },
+        ("head",  "머리",   "👒"),
+        ("left",  "왼손",   "🤚"),
+        ("body",  "몸통",   "🥋"),
+        ("right", "오른손", "✋"),
+        ("shoes", "신발",   "👟"),
+        ("ring1", "반지1",  "💍"),
+        ("ring2", "반지2",  "💍"),
     };
 
-    void SelectSlot(Slot s) => _selected = _selected?.Key == s.Key ? null : s;
+    void SelectSlot(string slot) => _selectedSlot = _selectedSlot == slot ? null : slot;
 
     void Unequip()
     {
-        if (_selected?.Item == null) return;
-        _popupMsg = $"{_selected.Item.Name}을(를) 해제했습니다.";
-        _selected.Item = null;
+        if (_selectedSlot == null) return;
+        GSS.UnequipSlot(_selectedSlot);
+        _popupTitle = "해제 완료"; _popupMsg = $"{_selectedSlot} 슬롯의 장비를 해제했습니다.";
         _popupVisible = true;
-        _selected = null;
+    }
+
+    void EquipFromList(long itemKey)
+    {
+        if (_selectedSlot == null) return;
+        GSS.EquipItem(_selectedSlot, itemKey);
+        var item = GDS.GetItem(itemKey);
+        _popupTitle = "장착 완료"; _popupMsg = $"{GDS.L(item?.NameKey)}을(를) 장착했습니다.";
+        _popupVisible = true;
     }
 }

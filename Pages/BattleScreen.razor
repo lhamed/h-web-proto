@@ -1,7 +1,9 @@
 @page "/battle"
-@using System.Timers
+@inject GameDataService GDS
+@inject GameStateService GSS
+@inject NavigationManager Nav
 
-<HudTop Hp="_hp" MaxHp="_maxHp" Mental="_mental" MaxMental="10" Level="_level" />
+<HudTop Hp="@GSS.Hp" MaxHp="@GSS.MaxHp" Mental="@GSS.Mental" MaxMental="@GSS.MaxMental" Level="@GSS.Level" />
 
 <div class="screen">
 <div class="battle-screen">
@@ -11,19 +13,22 @@
     </div>
 
     <div class="battle-field">
-        <!-- 적 -->
         <div>
             <div class="battle-side-label">적</div>
             <div class="battle-units">
                 @foreach (var e in _enemies)
                 {
-                    <div class="battle-unit enemy @(e.IsActive ? "active" : "") @(e.Hp <= 0 ? "dead" : "")">
-                        <div class="battle-unit-name">@e.Icon @e.Name</div>
+                    <div class="battle-unit enemy @(e.IsActive?"active":"") @(e.Hp<=0?"dead":"")">
+                        <div class="battle-unit-name">👾 @e.Name</div>
                         <div class="battle-unit-hp">@e.Hp / @e.MaxHp</div>
                         <div class="unit-hp-bar">
-                            <div class="unit-hp-bar-fill" style="width:@(e.Hp*100/e.MaxHp)%"></div>
+                            <div class="unit-hp-bar-fill" style="width:@(e.MaxHp>0?e.Hp*100/e.MaxHp:0)%"></div>
                         </div>
                     </div>
+                }
+                @if (_enemies.Count == 0)
+                {
+                    <div style="color:var(--text-muted);font-size:13px">적 정보 없음</div>
                 }
             </div>
         </div>
@@ -34,25 +39,20 @@
             <div class="battle-divider-line"></div>
         </div>
 
-        <!-- 아군 -->
         <div>
             <div class="battle-side-label">아군</div>
             <div class="battle-units">
-                @foreach (var a in _allies)
-                {
-                    <div class="battle-unit ally @(a.IsActive ? "active" : "") @(a.Hp <= 0 ? "dead" : "")">
-                        <div class="battle-unit-name">@a.Icon @a.Name</div>
-                        <div class="battle-unit-hp">@a.Hp / @a.MaxHp</div>
-                        <div class="unit-hp-bar">
-                            <div class="unit-hp-bar-fill" style="width:@(a.Hp*100/a.MaxHp)%"></div>
-                        </div>
+                <div class="battle-unit ally @(_playerActive?"active":"") @(GSS.Hp<=0?"dead":"")">
+                    <div class="battle-unit-name">🧝 플레이어</div>
+                    <div class="battle-unit-hp">@GSS.Hp / @GSS.MaxHp</div>
+                    <div class="unit-hp-bar">
+                        <div class="unit-hp-bar-fill" style="width:@(GSS.MaxHp>0?GSS.Hp*100/GSS.MaxHp:0)%"></div>
                     </div>
-                }
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 전투 로그 -->
     <div class="battle-log">
         @foreach (var log in _logs)
         {
@@ -60,165 +60,207 @@
         }
     </div>
 
-    <!-- 행동 버튼 (플레이어 턴일 때) -->
     @if (_playerTurn && !_battleOver)
     {
         <div class="selections-panel">
             <div class="dice-display">
                 @foreach (var d in _diceResult)
                 {
-                    <div class="dice @(_rolling ? "rolling" : "")">@d</div>
+                    <div class="dice @(_rolling?"rolling":"")">@d</div>
                 }
             </div>
-            <button class="selection-btn" @onclick="AttackAction">
-                ⚔️ 공격하기
-                <span class="selection-arrow">▶</span>
-            </button>
-            <button class="selection-btn" @onclick="DefendAction">
-                🛡️ 방어하기
-                <span class="selection-arrow">▶</span>
-            </button>
-            <button class="selection-btn" @onclick="FleeAction">
-                🏃 도망치기
-                <span class="selection-arrow">▶</span>
-            </button>
+            <button class="selection-btn" @onclick="AttackAction">⚔️ 공격 <span class="selection-arrow">▶</span></button>
+            <button class="selection-btn" @onclick="DefendAction">🛡️ 방어 <span class="selection-arrow">▶</span></button>
+            <button class="selection-btn" @onclick="FleeAction">🏃 도망 <span class="selection-arrow">▶</span></button>
         </div>
     }
     else if (!_battleOver)
     {
         <div class="event-advance-hint">⏳ 적의 차례...</div>
     }
+    else
+    {
+        <div class="selections-panel">
+            <button class="selection-btn" @onclick="EndBattle">계속 → <span class="selection-arrow">▶</span></button>
+        </div>
+    }
 </div>
 </div>
 
-<!-- 팝업 -->
-<PopupOverlay Visible="_popupVisible" Title="_popupTitle" Message="_popupMsg"
-              ConfirmText="확인" OnConfirm="ClosePopup" />
+<PopupOverlay Visible="_popupVisible" Title="@_popupTitle" Message="@_popupMsg"
+              ConfirmText="확인" OnConfirm="() => _popupVisible = false" />
 
-<!-- 게임 오버 -->
-@if (_gameOver)
+@if (GSS.IsGameOver)
 {
     <div class="gameover-overlay">
         <div class="gameover-title">GAME OVER</div>
-        <div class="gameover-sub">당신은 쓰러졌다</div>
-        <button class="gameover-retry" @onclick="Restart">다시 시작</button>
+        <div class="gameover-sub">전투에서 쓰러졌다</div>
+        <button class="gameover-retry" @onclick="GoToDefeat">계속</button>
     </div>
 }
 
 @code {
-    int _level = 3, _hp = 5, _maxHp = 6, _mental = 8, _turn = 1;
-    bool _playerTurn = true, _battleOver, _gameOver, _popupVisible, _rolling;
-    string _popupTitle = "", _popupMsg = "";
-    int[] _diceResult = { 3, 5 };
-    Random _rng = new();
-
-    record BattleUnit(string Name, string Icon)
+    class BattleUnit
     {
-        public int Hp    { get; set; }
-        public int MaxHp { get; set; }
-        public bool IsActive { get; set; }
+        public string Name   { get; set; } = "";
+        public int    Hp     { get; set; }
+        public int    MaxHp  { get; set; }
+        public int    Faces  { get; set; } = 6;
+        public int    Count  { get; set; } = 1;
+        public bool   IsActive { get; set; }
     }
 
-    List<BattleUnit> _enemies = new()
-    {
-        new BattleUnit("슬라임",     "🟢") { Hp = 8,  MaxHp = 8 },
-        new BattleUnit("해골 전사",  "💀") { Hp = 12, MaxHp = 12 },
-    };
-    List<BattleUnit> _allies = new()
-    {
-        new BattleUnit("주인공",     "🧝") { Hp = 10, MaxHp = 10 },
-        new BattleUnit("동료 마법사","🧙") { Hp = 7,  MaxHp = 8 },
-    };
+    List<BattleUnit> _enemies = new();
+    List<(string Text, string Cls)> _logs = new();
+    int[]  _diceResult = { 1 };
+    int    _turn = 1;
+    bool   _playerTurn = true, _battleOver, _rolling, _victory;
+    bool   _popupVisible, _playerActive;
+    string _popupTitle = "", _popupMsg = "";
+    Random _rng = new();
 
-    List<(string Text, string Cls)> _logs = new()
+    protected override void OnInitialized() => SetupBattle();
+
+    void SetupBattle()
     {
-        ("전투가 시작되었다!", ""),
-    };
+        _enemies.Clear(); _logs.Clear();
+        _turn = 1; _playerTurn = true; _battleOver = false; _victory = false;
+
+        // EXPORTED.bytes 데이터로 전투 구성
+        if (GDS.IsLoaded && GSS.PendingBattleKey > 0)
+        {
+            var battle = GDS.GetBattle(GSS.PendingBattleKey);
+            if (battle != null)
+            {
+                var group = GDS.GetMonsterGroup(battle.MonsterGroupKey);
+                if (group != null)
+                {
+                    foreach (var mKey in group.MemberKeys)
+                    {
+                        var unit = GDS.GetUnit(mKey);
+                        if (unit == null) continue;
+                        var dice = unit.AttackDiceKey > 0 ? GDS.GetDice(unit.AttackDiceKey) : null;
+                        _enemies.Add(new BattleUnit
+                        {
+                            Name  = GDS.L(unit.NameKey),
+                            Hp    = unit.MaxHP, MaxHp = unit.MaxHP,
+                            Faces = dice?.Faces ?? 6, Count = dice?.Count ?? 1
+                        });
+                    }
+                }
+            }
+        }
+
+        // 데이터 없으면 기본 적 2명
+        if (_enemies.Count == 0)
+        {
+            _enemies.Add(new BattleUnit { Name = "슬라임",    Hp = 8,  MaxHp = 8  });
+            _enemies.Add(new BattleUnit { Name = "해골 전사", Hp = 12, MaxHp = 12, Faces = 8 });
+        }
+
+        // 플레이어 공격 주사위
+        var playerUnit = GDS.IsLoaded && GDS.Data!.GameUnits.Count > 0 ? GDS.Data!.GameUnits[0] : null;
+        var pDice = playerUnit?.AttackDiceKey > 0 ? GDS.GetDice(playerUnit.AttackDiceKey) : null;
+        _diceResult = new int[pDice?.Count ?? 2];
+        for (int i = 0; i < _diceResult.Length; i++) _diceResult[i] = _rng.Next(1, (pDice?.Faces ?? 6) + 1);
+
+        AddLog("전투 시작!", "");
+    }
 
     async Task AttackAction()
     {
         if (!_playerTurn) return;
         _rolling = true;
-        _diceResult = new[] { _rng.Next(1, 7), _rng.Next(1, 7) };
+        for (int i = 0; i < _diceResult.Length; i++)
+            _diceResult[i] = _rng.Next(1, 7);
         StateHasChanged();
         await Task.Delay(500);
         _rolling = false;
 
-        int dmg = _diceResult.Sum();
+        int dmg = 0;
+        foreach (var d in _diceResult) dmg += d;
+
         var target = _enemies.FirstOrDefault(e => e.Hp > 0);
         if (target != null)
         {
             target.Hp = Math.Max(0, target.Hp - dmg);
-            AddLog($"🗡 주인공이 {target.Name}에게 {dmg} 피해! ({target.Hp}/{target.MaxHp})", "damage");
-            if (target.Hp <= 0) AddLog($"✨ {target.Name} 처치!", "victory");
+            AddLog($"🗡 {dmg} 피해 → {target.Name} ({target.Hp}/{target.MaxHp})", "damage");
+            if (target.Hp <= 0)
+            {
+                AddLog($"✨ {target.Name} 처치!", "victory");
+                GSS.ApplyEffect(new HWebProto.Models.EffectDto { DataType = "Exp", Op = "Add", Value = 20 });
+            }
         }
 
         if (_enemies.All(e => e.Hp <= 0))
         {
-            _battleOver = true;
-            _popupTitle = "승리!"; _popupMsg = "모든 적을 물리쳤다. EXP +30";
-            _popupVisible = true;
+            AddLog("🏆 승리!", "victory");
+            _battleOver = true; _victory = true;
             return;
         }
-
         _playerTurn = false;
+        _playerActive = false;
         await EnemyTurnAsync();
     }
 
     async Task DefendAction()
     {
-        AddLog("🛡 방어 자세를 취했다. 다음 공격을 일부 흡수한다.", "");
+        AddLog("🛡 방어 자세. 다음 피해 -2.", "");
         _playerTurn = false;
         await EnemyTurnAsync();
     }
 
-    void FleeAction()
+    async Task FleeAction()
     {
-        bool success = _rng.Next(0, 2) == 0;
-        if (success) { _popupTitle = "도주 성공"; _popupMsg = "간신히 도망쳤다."; }
-        else         { _popupTitle = "도주 실패"; _popupMsg = "적이 막아섰다!"; }
-        _popupVisible = true;
-        _battleOver   = true;
+        bool ok = _rng.Next(2) == 0;
+        AddLog(ok ? "🏃 도주 성공!" : "❌ 도주 실패!", ok ? "victory" : "damage");
+        if (ok) { _battleOver = true; }
+        else    { _playerTurn = false; await EnemyTurnAsync(); }
     }
 
     async Task EnemyTurnAsync()
     {
-        await Task.Delay(800);
+        await Task.Delay(700);
         foreach (var e in _enemies.Where(e => e.Hp > 0))
         {
-            var t = _allies.Where(a => a.Hp > 0).OrderBy(_ => _rng.Next()).FirstOrDefault();
-            if (t == null) break;
-            int dmg = _rng.Next(1, 5);
-            t.Hp = Math.Max(0, t.Hp - dmg);
-            if (t.Name == "주인공") _hp = Math.Max(0, _hp - 1);
-            AddLog($"💢 {e.Name}이 {t.Name}에게 {dmg} 피해!", "damage");
-        }
-
-        _turn++;
-        _playerTurn = true;
-        StateHasChanged();
-
-        if (_hp <= 0 || _allies.All(a => a.Hp <= 0))
-        {
+            e.IsActive = true; StateHasChanged();
             await Task.Delay(300);
-            _gameOver = true;
-            StateHasChanged();
+            int dmg = 0;
+            for (int i = 0; i < e.Count; i++) dmg += _rng.Next(1, e.Faces + 1);
+            GSS.ApplyEffect(new HWebProto.Models.EffectDto { DataType = "HP", Op = "Subtract", Value = dmg });
+            AddLog($"💢 {e.Name} → 플레이어 {dmg} 피해", "damage");
+            e.IsActive = false;
+            if (GSS.IsGameOver) break;
         }
+        _turn++;
+        _playerTurn = true; _playerActive = true;
+        StateHasChanged();
+    }
+
+    void EndBattle()
+    {
+        if (_victory && GSS.VictoryEventKey > 0)
+        {
+            GSS.CurrentEventKey = GSS.VictoryEventKey;
+            Nav.NavigateTo("/event");
+        }
+        else Nav.NavigateTo("/");
+    }
+
+    void GoToDefeat()
+    {
+        if (GSS.DefeatEventKey > 0)
+        {
+            GSS.CurrentEventKey = GSS.DefeatEventKey;
+            Nav.NavigateTo("/event");
+        }
+        else Nav.NavigateTo("/");
     }
 
     void AddLog(string text, string cls)
     {
         _logs.Add((text, cls));
-        if (_logs.Count > 10) _logs.RemoveAt(0);
+        if (_logs.Count > 12) _logs.RemoveAt(0);
         StateHasChanged();
-    }
-
-    void ClosePopup() { _popupVisible = false; }
-    void Restart()
-    {
-        _enemies.ForEach(e => { e.Hp = e.MaxHp; e.IsActive = false; });
-        _allies.ForEach(a => { a.Hp = a.MaxHp; a.IsActive = false; });
-        _hp = 5; _turn = 1; _playerTurn = true; _battleOver = false; _gameOver = false;
-        _logs.Clear(); AddLog("전투가 다시 시작되었다!", "");
     }
 }

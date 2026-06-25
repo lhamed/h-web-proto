@@ -1,141 +1,191 @@
 @page "/event"
+@inject GameDataService GDS
+@inject GameStateService GSS
+@inject NavigationManager Nav
 
-<HudTop Hp="_hp" MaxHp="6" Mental="_mental" MaxMental="10" Level="_level" />
+<HudTop Hp="@GSS.Hp" MaxHp="@GSS.MaxHp" Mental="@GSS.Mental" MaxMental="@GSS.MaxMental" Level="@GSS.Level" />
 
 <div class="screen">
+@if (_event == null)
+{
+    <div style="padding:40px 20px;text-align:center;color:var(--text-dim)">
+        <div style="font-size:32px;margin-bottom:10px">📭</div>
+        @if (!GDS.IsLoaded)
+        {
+            <div>데이터가 없습니다.</div>
+            <a href="/import" style="color:var(--accent)">데이터 불러오기 →</a>
+        }
+        else
+        {
+            <div>진행할 이벤트가 없습니다.</div>
+            <a href="/" style="color:var(--accent)">홈으로 →</a>
+        }
+    </div>
+}
+else
+{
 <div class="event-screen">
-    <!-- 배경 / 씬 영역 -->
+    <!-- 배경 씬 -->
     <div class="event-bg" @onclick="Advance" style="cursor:pointer">
         <div class="event-bg-overlay"></div>
-        <div class="event-scene-label">📍 @_scenes[_sceneIdx].Location</div>
-
-        <!-- 씬 분위기 아이콘 -->
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);font-size:80px;opacity:0.15;pointer-events:none;user-select:none">
-            @_scenes[_sceneIdx].BgIcon
+        <div class="event-scene-label">📍 이벤트 #@_event.Key</div>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);font-size:80px;opacity:0.12;pointer-events:none;user-select:none">
+            @_sceneBgIcon
         </div>
     </div>
 
     <!-- 콘텐츠 패널 -->
     <div class="event-content-panel">
-        <div class="event-scroll-area">
+        <div class="event-scroll-area" @ref="_scrollArea">
             @foreach (var item in _visibleItems)
             {
-                @if (item.Type == "narration")
+                @if (item.Type == "Narration")
                 {
-                    <div class="narration-text">@item.Text<span class="typewriter-cursor" style="@(item.Done?"display:none":"")"></span></div>
+                    <div class="narration-text">
+                        @item.DisplayText
+                        @if (!item.Done) { <span class="typewriter-cursor"></span> }
+                    </div>
                 }
-                else if (item.Type == "dialogue")
+                else if (item.Type == "Dialogue")
                 {
                     <div class="dialogue-box">
                         <div class="dialogue-portrait">@item.Portrait</div>
                         <div class="dialogue-bubble">
                             <div class="dialogue-speaker">@item.Speaker</div>
-                            <div class="dialogue-text">@item.Text<span class="typewriter-cursor" style="@(item.Done?"display:none":"")"></span></div>
+                            <div class="dialogue-text">
+                                @item.DisplayText
+                                @if (!item.Done) { <span class="typewriter-cursor"></span> }
+                            </div>
                         </div>
                     </div>
                 }
-                else if (item.Type == "image")
+                else if (item.Type == "Image")
                 {
-                    <div class="image-content" style="font-size:60px">@item.Portrait</div>
+                    <div class="image-content" style="font-size:60px">🖼</div>
                 }
             }
         </div>
-        @if (_currentIndex < _scenes[_sceneIdx].Items.Length && !_showSelections)
+        @if (!_allDone && !_showSelections)
         {
             <div class="event-advance-hint">▼ 화면을 탭하세요</div>
         }
     </div>
 
     <!-- 선택지 -->
-    @if (_showSelections)
+    @if (_showSelections && _block != null)
     {
         <div class="selections-panel">
-            @foreach (var sel in _scenes[_sceneIdx].Selections)
+            @foreach (var sel in _block.Selections)
             {
                 var s = sel;
-                <button class="selection-btn" @onclick="() => SelectChoice(s)">
-                    @s.Text
+                <button class="selection-btn" @onclick="() => ChooseSelection(s)">
+                    @GDS.L(s.SelectionTextKey)
+                    <span class="selection-arrow">▶</span>
+                </button>
+            }
+            @if (_block.Selections.Count == 0)
+            {
+                <button class="selection-btn" @onclick="AdvanceBlock">
+                    계속 →
                     <span class="selection-arrow">▶</span>
                 </button>
             }
         </div>
     }
 </div>
+}
 </div>
 
-<!-- 팝업 -->
-<PopupOverlay Visible="_popupVisible" Title="_popupTitle" Message="_popupMsg"
-              ConfirmText="확인" OnConfirm="ClosePopup" />
+<!-- 결과 팝업 -->
+<PopupOverlay Visible="_popupVisible"
+              Title="@_popupTitle" Message="@_popupMsg"
+              ConfirmText="확인" OnConfirm="AfterPopup" />
+
+<!-- 게임 오버 -->
+@if (GSS.IsGameOver)
+{
+    <div class="gameover-overlay">
+        <div class="gameover-title">GAME OVER</div>
+        <div class="gameover-sub">쓰러졌다...</div>
+        <button class="gameover-retry" @onclick='() => Nav.NavigateTo("/")'>처음으로</button>
+    </div>
+}
 
 @code {
-    int _hp = 5, _mental = 8, _level = 3;
-    int _sceneIdx = 0, _currentIndex = 0;
-    bool _showSelections, _popupVisible;
-    string _popupTitle = "", _popupMsg = "";
+    record VisibleItem(string Type, string DisplayText, string Speaker = "", string Portrait = "", bool Done = false);
 
-    record ContentItem(string Type, string Text, string Speaker = "", string Portrait = "", bool Done = false);
-    record SelectionItem(string Text, string ResultTitle, string ResultMsg);
-    record Scene(string Location, string BgIcon, ContentItem[] Items, SelectionItem[] Selections);
+    HWebProto.Models.GameEventDto?      _event;
+    HWebProto.Models.ContentBlockDto?   _block;
+    List<VisibleItem> _visibleItems = new();
+    int  _blockIdx, _itemIdx;
+    bool _showSelections, _popupVisible, _allDone;
+    string _popupTitle = "", _popupMsg = "", _sceneBgIcon = "🌙";
+    long _nextEventKey;
+    Microsoft.AspNetCore.Components.ElementReference _scrollArea;
 
-    readonly Scene[] _scenes =
+    static readonly string[] _bgIcons = { "🌙","🏚","🏮","⛩","🌲","🏔","🌊","🏜","🗡","🔥" };
+    static readonly Random _rng = new();
+
+    protected override void OnInitialized() => LoadEvent(GSS.CurrentEventKey);
+
+    void LoadEvent(long key)
     {
-        new("낡은 여관 — 2층 복도", "🏚",
-            new ContentItem[]
-            {
-                new("narration", "삐걱거리는 복도를 걷다 방문 앞에서 멈춘다. 문 아래로 희미한 빛이 새어나온다.", Done:false),
-                new("dialogue",  "잠깐만요, 거기 누구 있어요?", "여관 주인", "👴"),
-                new("narration", "문 너머에서 낮고 거친 목소리가 들려온다.", Done:false),
-                new("dialogue",  "...들어오지 마시오. 이건 당신이 알아야 할 것들이오.", "의문의 손님", "🧔"),
-                new("image",     "", "", "📜"),
-                new("dialogue",  "이 편지를 읽었다면 이미 늦은 것일지도 모르오.", "의문의 손님", "🧔"),
-            },
-            new SelectionItem[]
-            {
-                new("문을 열고 들어간다", "용기", "당신은 망설임 없이 문을 열었다. 방 안에는 아무도 없었다."),
-                new("조용히 귀를 기울인다", "신중함", "발소리가 멀어지는 것이 들렸다. 그는 이미 떠난 것이었다."),
-                new("자리를 피한다",        "회피",   "알 수 없는 불안감이 등 뒤를 따라왔다."),
-            }),
+        _event = GDS.IsLoaded ? GDS.GetEvent(key) : null;
+        if (_event == null && !GDS.IsLoaded)
+        {
+            // 데모 이벤트 사용
+            LoadDemoEvent();
+            return;
+        }
+        if (_event == null) return;
 
-        new("시장 골목 — 황혼", "🏮",
-            new ContentItem[]
-            {
-                new("narration", "해가 기울며 시장은 마지막 손님들로 분주하다."),
-                new("dialogue",  "이봐요, 당신도 소문 들었소?", "행인", "👤"),
-                new("narration", "그는 목소리를 낮추며 몸을 가까이 기울였다."),
-                new("dialogue",  "북쪽 숲에서 이상한 빛이 보였다는군요. 사흘째입니다.", "행인", "👤"),
-            },
-            new SelectionItem[]
-            {
-                new("소문을 더 캐낸다",    "정보 수집", "행인은 오래된 지도 한 장을 꺼내 보였다."),
-                new("무시하고 지나친다",   "무관심",    "무언가를 놓친 것 같은 느낌이 남았다."),
-            }),
-    };
+        // 조건 체크 → 조건 만족하는 첫 번째 이벤트
+        bool condOk = (_event.Conditions?.Count ?? 0) == 0
+                   || _event.Conditions!.All(c => GSS.CheckCondition(c));
+        if (!condOk) { _event = null; return; }
 
-    List<ContentItem> _visibleItems = new();
+        _sceneBgIcon = _bgIcons[_rng.Next(_bgIcons.Length)];
+        _blockIdx = 0; _itemIdx = 0;
+        _showSelections = false; _allDone = false;
+        _visibleItems.Clear();
+        LoadBlock();
+    }
 
-    protected override void OnInitialized() => ShowNextItem();
+    void LoadBlock()
+    {
+        if (_event == null || _blockIdx >= _event.ContentBlocks.Count)
+        {
+            _showSelections = false; _allDone = true;
+            return;
+        }
+        _block = _event.ContentBlocks[_blockIdx];
+        _itemIdx = 0;
+        ShowNextItem();
+    }
 
     void ShowNextItem()
     {
-        var items = _scenes[_sceneIdx].Items;
-        if (_currentIndex >= items.Length)
+        if (_block == null) return;
+        if (_itemIdx >= _block.ContentItems.Count)
         {
+            // 블록 끝 → 선택지 표시
             _showSelections = true;
             return;
         }
-        var item = items[_currentIndex] with { Done = false };
-        _visibleItems.Add(item);
-        _currentIndex++;
-
-        // 타이핑 시뮬레이션: 짧은 딜레이 후 Done 처리
+        var raw = _block.ContentItems[_itemIdx];
+        string text = GDS.L(raw.TextKey);
+        string speaker = GDS.L(raw.SpeakerNameKey);
+        _visibleItems.Add(new VisibleItem(raw.Type, text, speaker, "🧑", Done: false));
+        _itemIdx++;
         _ = MarkDoneAsync(_visibleItems.Count - 1);
     }
 
     async Task MarkDoneAsync(int idx)
     {
-        int ms = Math.Min(_visibleItems[idx].Text.Length * 40, 2000);
+        int ms = Math.Min(_visibleItems[idx].DisplayText.Length * 35, 1800);
         await Task.Delay(ms);
-        _visibleItems[idx] = _visibleItems[idx] with { Done = true };
+        if (idx < _visibleItems.Count)
+            _visibleItems[idx] = _visibleItems[idx] with { Done = true };
         StateHasChanged();
     }
 
@@ -145,7 +195,6 @@
         var last = _visibleItems.LastOrDefault();
         if (last != null && !last.Done)
         {
-            // 스킵: 마지막 항목 즉시 완료
             _visibleItems[^1] = last with { Done = true };
         }
         else
@@ -154,21 +203,108 @@
         }
     }
 
-    void SelectChoice(SelectionItem sel)
+    void ChooseSelection(HWebProto.Models.SelectionDto sel)
     {
         _showSelections = false;
-        _popupTitle  = sel.ResultTitle;
-        _popupMsg    = sel.ResultMsg;
-        _popupVisible = true;
+
+        // 공통 이펙트 적용
+        foreach (var e in _block?.CommonEffects ?? new()) GSS.ApplyEffect(e);
+        // 선택지 이펙트 적용
+        foreach (var e in sel.Effects ?? new()) GSS.ApplyEffect(e);
+
+        string resultText = GDS.L(sel.ResultTextKey);
+
+        if (sel.BattleVictoryEventKey > 0 || sel.BattleDefeatEventKey > 0)
+        {
+            // 전투 이벤트로 전환
+            GSS.VictoryEventKey = sel.BattleVictoryEventKey;
+            GSS.DefeatEventKey  = sel.BattleDefeatEventKey;
+            if (!string.IsNullOrEmpty(resultText))
+            {
+                _popupTitle = "전투 시작"; _popupMsg = resultText; _popupVisible = true;
+                _nextEventKey = -1; // 팝업 후 전투로
+            }
+            else
+            {
+                Nav.NavigateTo("/battle");
+            }
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(resultText))
+        {
+            _popupTitle = "결과";
+            _popupMsg   = resultText;
+            _popupVisible = true;
+            _nextEventKey = 0;
+        }
+        else
+        {
+            AdvanceBlock();
+        }
     }
 
-    void ClosePopup()
+    void AdvanceBlock()
+    {
+        _blockIdx++;
+        _visibleItems.Clear();
+        _showSelections = false;
+        LoadBlock();
+    }
+
+    void AfterPopup()
     {
         _popupVisible = false;
-        // 다음 씬으로
-        _sceneIdx = (_sceneIdx + 1) % _scenes.Length;
-        _currentIndex = 0;
+        if (_nextEventKey == -1)
+        {
+            Nav.NavigateTo("/battle");
+            return;
+        }
+        if (_allDone || _event?.ContentBlocks.Count <= _blockIdx + 1)
+        {
+            // 다음 이벤트 결정
+            long next = ResolveNextEvent();
+            if (next > 0)
+            {
+                GSS.CurrentEventKey = next;
+                LoadEvent(next);
+            }
+            else
+            {
+                // 이벤트 체인 종료 → 홈
+                Nav.NavigateTo("/");
+            }
+        }
+        else
+        {
+            AdvanceBlock();
+        }
+    }
+
+    long ResolveNextEvent()
+    {
+        if (_event == null) return 0;
+        return _event.NextEventMode switch
+        {
+            "First"           => _event.NextEventKeys?.FirstOrDefault() ?? 0,
+            "Random"          => _event.NextEventKeys?.Count > 0
+                                 ? _event.NextEventKeys[_rng.Next(_event.NextEventKeys.Count)]
+                                 : 0,
+            "ConditionalList" => _event.NextEventEntries?
+                                     .FirstOrDefault(e => e.Conditions.All(c => GSS.CheckCondition(c)))
+                                     ?.EventKey ?? 0,
+            _                 => _event.NextEventKeys?.FirstOrDefault() ?? 0
+        };
+    }
+
+    // 데모 이벤트 (데이터 없을 때)
+    void LoadDemoEvent()
+    {
         _visibleItems.Clear();
-        ShowNextItem();
+        _showSelections = false; _allDone = false;
+        _sceneBgIcon = "🏚";
+        _visibleItems.Add(new VisibleItem("Narration",
+            "삐걱거리는 복도를 걷다 방문 앞에서 멈춘다. 문 아래로 희미한 빛이 새어나온다.", Done: false));
+        _ = MarkDoneAsync(0);
     }
 }

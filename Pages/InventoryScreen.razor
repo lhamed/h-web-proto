@@ -1,105 +1,183 @@
 @page "/inventory"
+@inject GameDataService GDS
+@inject GameStateService GSS
 
-<HudTop Hp="5" MaxHp="6" Mental="8" MaxMental="10" Level="3" />
+<HudTop Hp="@GSS.Hp" MaxHp="@GSS.MaxHp" Mental="@GSS.Mental" MaxMental="@GSS.MaxMental" Level="@GSS.Level" />
 
 <div class="screen">
 <div class="inventory-screen">
     <div class="inventory-title">🎒 인벤토리</div>
 
-    <div class="section-title">소지품</div>
-    <div class="item-grid">
-        @foreach (var item in _items)
-        {
-            var i = item;
-            <div class="item-slot @(i.Count == 0 ? "empty" : "") @(_selected?.Name == i.Name ? "selected" : "")"
-                 @onclick="() => SelectItem(i)">
-                <div class="item-slot-icon">@i.Icon</div>
-                <div class="item-slot-name">@i.Name</div>
-                @if (i.Stackable && i.Count > 1)
-                {
-                    <div class="item-slot-count">@i.Count</div>
-                }
-            </div>
-        }
-        @for (int n = _items.Count; n < 12; n++)
-        {
-            <div class="item-slot empty">
-                <div class="item-slot-icon" style="font-size:18px;color:var(--text-muted)">+</div>
-            </div>
-        }
-    </div>
-
-    @if (_selected != null)
+    @if (GDS.IsLoaded)
     {
-        <div class="item-detail">
-            <div class="item-detail-name">@_selected.Icon @_selected.Name</div>
-            <div class="item-tags">
-                @if (_selected.Stackable)  { <span class="tag tag-blue">중첩 가능</span> }
-                @if (_selected.Usable)     { <span class="tag tag-green">사용 가능</span> }
-                @if (_selected.Equippable) { <span class="tag tag-gold">@_selected.EquipSlot</span> }
+        <!-- 실제 데이터 기반 인벤토리 -->
+        @if (GSS.Inventory.Count == 0)
+        {
+            <div style="text-align:center;padding:32px 0;color:var(--text-muted);font-size:13px">
+                소지품이 없습니다.
             </div>
-            <div class="item-detail-desc">@_selected.Desc</div>
-            <div style="display:flex;gap:8px">
-                @if (_selected.Usable)
+        }
+        else
+        {
+            <div class="section-title">소지품</div>
+            <div class="item-grid">
+                @foreach (var (itemKey, count) in GSS.Inventory)
                 {
-                    <button class="game-btn" @onclick="UseItem">사용하기</button>
+                    var item = GDS.GetItem(itemKey);
+                    if (item == null) continue;
+                    var k = itemKey;
+                    <div class="item-slot @(_selectedKey == k ? "selected" : "")" @onclick="() => SelectItem(k)">
+                        <div class="item-slot-icon">🎁</div>
+                        <div class="item-slot-name">@GDS.L(item.NameKey)</div>
+                        @if (item.Stackable && count > 1)
+                        {
+                            <div class="item-slot-count">@count</div>
+                        }
+                    </div>
                 }
-                @if (_selected.Equippable)
+                @for (int n = 0; n < Math.Max(0, 8 - GSS.Inventory.Count); n++)
                 {
-                    <button class="game-btn secondary" @onclick="EquipItem">장착하기</button>
+                    <div class="item-slot empty"><div class="item-slot-icon" style="font-size:18px;color:var(--text-muted)">+</div></div>
                 }
-                <button class="game-btn secondary" @onclick="() => _selected = null">닫기</button>
             </div>
+        }
+
+        @if (_selectedKey > 0)
+        {
+            var item = GDS.GetItem(_selectedKey);
+            @if (item != null)
+            {
+                <div class="item-detail">
+                    <div class="item-detail-name">@GDS.L(item.NameKey)</div>
+                    <div class="item-tags">
+                        @if (item.Stackable)  { <span class="tag tag-blue">중첩 가능</span> }
+                        @if (item.Usable)     { <span class="tag tag-green">사용 가능</span> }
+                        @if (item.Equippable) { <span class="tag tag-gold">@item.EquipmentType</span> }
+                    </div>
+                    <div class="item-detail-desc">@GDS.L(item.DescriptionKey)</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        @if (item.Usable)
+                        {
+                            <button class="game-btn" @onclick="UseSelected">사용하기</button>
+                        }
+                        @if (item.Equippable)
+                        {
+                            <button class="game-btn secondary" @onclick="EquipSelected">장착하기</button>
+                        }
+                        <button class="game-btn secondary" @onclick="() => _selectedKey = 0">닫기</button>
+                    </div>
+                </div>
+            }
+        }
+
+        <!-- 전체 아이템 목록 (참조용) -->
+        <div style="margin-top:16px">
+            <div class="section-title">아이템 데이터 (@(GDS.Data?.GameItems.Count ?? 0)종)</div>
+            <div class="item-grid">
+                @foreach (var item in GDS.Data?.GameItems ?? new())
+                {
+                    var i = item;
+                    <div class="item-slot" @onclick="() => AddItemAndSelect(i.Key)" title="클릭하면 인벤토리에 추가">
+                        <div class="item-slot-icon">@(i.Equippable?"⚔️":i.Usable?"🧪":"📦")</div>
+                        <div class="item-slot-name">@GDS.L(i.NameKey)</div>
+                    </div>
+                }
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center">아이템을 클릭하면 인벤토리에 추가됩니다</div>
+        </div>
+    }
+    else
+    {
+        <!-- 데모 인벤토리 -->
+        <div class="section-title">데모 아이템</div>
+        <div class="item-grid">
+            @foreach (var item in _demoItems)
+            {
+                var i = item;
+                <div class="item-slot @(_selectedDemo?.Name == i.Name ? "selected" : "")" @onclick="() => _selectedDemo = i">
+                    <div class="item-slot-icon">@i.Icon</div>
+                    <div class="item-slot-name">@i.Name</div>
+                    @if (i.Count > 1) { <div class="item-slot-count">@i.Count</div> }
+                </div>
+            }
+        </div>
+        @if (_selectedDemo != null)
+        {
+            <div class="item-detail">
+                <div class="item-detail-name">@_selectedDemo.Icon @_selectedDemo.Name</div>
+                <div class="item-detail-desc">@_selectedDemo.Desc</div>
+                <button class="game-btn secondary" @onclick="() => _selectedDemo = null">닫기</button>
+            </div>
+        }
+        <div style="margin-top:12px;text-align:center">
+            <a href="/import" style="color:var(--accent);font-size:13px">📦 데이터 불러오기 →</a>
         </div>
     }
 </div>
 </div>
 
-<PopupOverlay Visible="_popupVisible" Title="_popupTitle" Message="_popupMsg"
-              ConfirmText="확인" OnConfirm="() => { _popupVisible = false; }" />
+<PopupOverlay Visible="_popupVisible" Title="@_popupTitle" Message="@_popupMsg"
+              ConfirmText="확인" OnConfirm="() => _popupVisible = false" />
 
 @code {
-    record Item(string Name, string Icon, string Desc, bool Stackable = false,
-                bool Usable = false, bool Equippable = false, string EquipSlot = "",
-                int Count = 1);
-
-    Item? _selected;
+    long _selectedKey;
     bool _popupVisible;
     string _popupTitle = "", _popupMsg = "";
 
-    List<Item> _items = new()
+    void SelectItem(long key) => _selectedKey = _selectedKey == key ? 0 : key;
+
+    void UseSelected()
     {
-        new("체력 물약",   "🧪", "HP를 3 회복한다.", Stackable:true, Usable:true, Count:3),
-        new("낡은 검",     "⚔️", "날이 닳았지만 아직 쓸 만하다.", Equippable:true, EquipSlot:"오른손"),
-        new("가죽 갑옷",   "🥋", "가벼운 가죽 갑옷. 방어력 +2.", Equippable:true, EquipSlot:"몸통"),
-        new("해독제",      "💊", "독 상태를 제거한다.", Stackable:true, Usable:true, Count:2),
-        new("횃불",        "🔦", "어두운 공간을 밝힌다.", Stackable:true, Usable:true, Count:5),
-        new("금화",        "🪙", "왕국 통용 화폐다.", Stackable:true, Count:42),
-        new("오래된 반지", "💍", "문양이 새겨진 반지. 용도 불명.", Equippable:true, EquipSlot:"반지1"),
-        new("철 방패",     "🛡️", "단단한 방패. 방어력 +3.", Equippable:true, EquipSlot:"왼손"),
+        var item = GDS.GetItem(_selectedKey);
+        if (item == null) return;
+        if (GSS.UseItem(_selectedKey))
+        {
+            // HP 물약 효과 (DescriptionKey로 HP 회복 판별 - 단순 처리)
+            if (item.Usable)
+                GSS.ApplyEffect(new HWebProto.Models.EffectDto { DataType = "HP", Op = "Add", Value = 3 });
+            _popupTitle = "사용 완료"; _popupMsg = $"{GDS.L(item.NameKey)}을(를) 사용했다.";
+        }
+        else
+        {
+            _popupTitle = "사용 불가"; _popupMsg = "소지하고 있지 않습니다.";
+        }
+        _popupVisible = true;
+        _selectedKey = 0;
+    }
+
+    void EquipSelected()
+    {
+        var item = GDS.GetItem(_selectedKey);
+        if (item == null) return;
+        string slot = GDS.EquipTypeToSlot(item.EquipmentType);
+        if (!string.IsNullOrEmpty(slot))
+        {
+            GSS.EquipItem(slot, _selectedKey);
+            _popupTitle = "장착 완료"; _popupMsg = $"{GDS.L(item.NameKey)}을(를) 장착했다.";
+        }
+        else
+        {
+            _popupTitle = "장착 불가"; _popupMsg = "장착 슬롯을 알 수 없습니다.";
+        }
+        _popupVisible = true;
+        _selectedKey = 0;
+    }
+
+    void AddItemAndSelect(long key)
+    {
+        GSS.AddItem(key);
+        _selectedKey = key;
+    }
+
+    // 데모 데이터
+    record DemoItem(string Name, string Icon, string Desc, int Count = 1);
+    DemoItem? _selectedDemo;
+    readonly List<DemoItem> _demoItems = new()
+    {
+        new("체력 물약","🧪","HP를 3 회복한다.",3),
+        new("낡은 검","⚔️","날이 닳았지만 쓸 만하다."),
+        new("가죽 갑옷","🥋","방어력 +2."),
+        new("횃불","🔦","어두운 공간을 밝힌다.",5),
+        new("금화","🪙","통용 화폐.",42),
     };
-
-    void SelectItem(Item item)
-    {
-        if (item.Count == 0) return;
-        _selected = _selected?.Name == item.Name ? null : item;
-    }
-
-    void UseItem()
-    {
-        if (_selected == null) return;
-        _popupTitle = _selected.Name + " 사용";
-        _popupMsg   = $"{_selected.Name}을(를) 사용했다.";
-        _popupVisible = true;
-        _selected = null;
-    }
-
-    void EquipItem()
-    {
-        if (_selected == null) return;
-        _popupTitle = "장착 완료";
-        _popupMsg   = $"{_selected.Name}을(를) {_selected.EquipSlot} 슬롯에 장착했다.";
-        _popupVisible = true;
-        _selected = null;
-    }
 }
