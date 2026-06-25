@@ -331,115 +331,159 @@
     }
 
     void OnStateChanged() => StateHasChanged();
-    public void Dispose() => GSS.OnStateChanged -= OnStateChanged;
+    public void Dispose()
+    {
+        GSS.OnStateChanged -= OnStateChanged;
+        _runCts?.Cancel();
+    }
 
     // ── Event Engine ─────────────────────────────────────────────────────────
+    CancellationTokenSource? _runCts;
+
     void StartEvent(long key)
     {
         _evt = GDS.GetEvent(key);
         if (_evt == null) { StartDemoMode(); return; }
 
-        // 조건 체크
         bool ok = (_evt.Conditions?.Count ?? 0) == 0
                || _evt.Conditions!.All(c => GSS.CheckCondition(c));
         if (!ok) { _evt = null; StartDemoMode(); return; }
 
         _blockIdx = 0;
         _contentItems.Clear();
-        _showSelections  = false;
-        
-        LoadBlock();
+        _showSelections = false;
+        _showTopInfo    = false;
+
+        RunEventAsync();
     }
 
-    void LoadBlock()
+    void RunEventAsync()
     {
-        if (_evt == null || _blockIdx >= _evt.ContentBlocks.Count)
-        {
-            _showSelections = false;
-            // 이벤트 끝 → 다음 이벤트
-            long next = ResolveNextEvent();
-            if (next > 0) { StartEvent(next); return; }
-            // 체인 종료
-            ShowPopup("...", "더 이상 이야기가 없습니다.", "확인", () => { });
-            return;
-        }
-        _block   = _evt.ContentBlocks[_blockIdx];
-        _itemIdx = 0;
-        ShowNextItem();
+        _runCts?.Cancel();
+        _runCts = new CancellationTokenSource();
+        _ = RunBlockLoopAsync(_runCts.Token);
     }
 
-    void ShowNextItem()
+    async Task RunBlockLoopAsync(CancellationToken ct)
     {
-        if (_block == null) return;
-        if (_itemIdx >= _block.ContentItems.Count)
+        while (!ct.IsCancellationRequested)
         {
-            // 블록 끝 → 선택지
-            PrepareSelections();
-            return;
-        }
-        var raw = _block.ContentItems[_itemIdx];
-        string text    = GDS.L(raw.TextKey);
-        string speaker = GDS.L(raw.SpeakerNameKey);
-        bool isDialogue = raw.Type == "Dialogue";
+            // ── 이벤트 끝 체크 ──────────────────────────────────────────────
+            if (_evt == null || _blockIdx >= (_evt.ContentBlocks?.Count ?? 0))
+            {
+                _showSelections = false;
+                long next = ResolveNextEvent();
+                if (next > 0) { StartEvent(next); return; }
+                ShowPopup("...", "더 이상 이야기가 없습니다.", "확인", () => { });
+                return;
+            }
 
-        var ci = new ContentItem
-        {
-            Type        = raw.Type,
-            DisplayText = text,
-            Speaker     = speaker,
-            Portrait    = "🧑",
-            Done        = false
-        };
-        _contentItems.Add(ci);
-        _itemIdx++;
+            _block   = _evt.ContentBlocks[_blockIdx];
+            _itemIdx = 0;
 
-        // TopInfoPanel
-        if (isDialogue && !string.IsNullOrEmpty(speaker))
-        {
-            _showTopInfo        = true;
-            _currentSpeakerName = speaker;
-            _currentExpression  = "🧑";
-            _speakerSub         = "";
-        }
-        else if (!isDialogue)
-        {
+            // ── ContentItems 순차 출력 ────────────────────────────────────
+            while (_itemIdx < (_block.ContentItems?.Count ?? 0) && !ct.IsCancellationRequested)
+            {
+                var raw     = _block.ContentItems![_itemIdx];
+                string text = GDS.L(raw.TextKey);
+                string spk  = GDS.L(raw.SpeakerNameKey);
+                bool isDlg  = raw.Type == "Dialogue";
+
+                var ci = new ContentItem
+                {
+                    Type        = raw.Type,
+                    DisplayText = text,
+                    Speaker     = spk,
+                    Portrait    = "🧑",
+                    Done        = false
+                };
+                _contentItems.Add(ci);
+                _itemIdx++;
+
+                if (isDlg && !string.IsNullOrEmpty(spk))
+                {
+                    _showTopInfo = true; _currentSpeakerName = spk; _currentExpression = "🧑"; _speakerSub = "";
+                }
+                else if (!isDlg) { _showTopInfo = false; }
+
+                // 타이핑 애니메이션
+                int ciIdx = _contentItems.Count - 1;
+                _typing = true;
+                await InvokeAsync(StateHasChanged);
+
+                int typeMs = Math.Clamp(text.Length * 35, 200, 2000);
+                var deadline = DateTime.UtcNow.AddMilliseconds(typeMs);
+                while (DateTime.UtcNow < deadline && _typing && !ct.IsCancellationRequested)
+                    await Task.Delay(50);
+
+                _contentItems[ciIdx].Done = true;
+                _typing = false;
+                await InvokeAsync(StateHasChanged);
+
+                // 항목 간 짧은 텀
+                await Task.Delay(250, ct).ConfigureAwait(false);
+                if (ct.IsCancellationRequested) return;
+            }
+
+            // ── 선택지 처리 ──────────────────────────────────────────────
+            var sels = _block.Selections ?? new();
+            if (sels.Count == 0)
+            {
+                // 선택지 없음 → 공통 이펙트 후 다음 블록
+                foreach (var e in _block.CommonEffects ?? new()) GSS.ApplyEffect(e);
+                _blockIdx++;
+                continue; // 루프 다음 반복 = 다음 블록 로드
+            }
+
+            // 선택지 있음 → 표시하고 대기
             _showTopInfo = false;
+            _currentSelections.Clear();
+            _visibleSelCount = 0;
+
+            foreach (var sel in sels)
+            {
+                _currentSelections.Add(new SelectionItem
+                {
+                    DisplayText = GDS.L(sel.SelectionTextKey),
+                    TypingDone  = false,
+                    Source      = sel
+                });
+            }
+
+            _showSelections = true;
+            await InvokeAsync(StateHasChanged);
+
+            // 버튼 순차 노출
+            for (int i = 0; i < _currentSelections.Count; i++)
+            {
+                _visibleSelCount = i + 1;
+                await InvokeAsync(StateHasChanged);
+                int btnMs = Math.Clamp(_currentSelections[i].DisplayText.Length * 30, 200, 800);
+                await Task.Delay(btnMs, ct).ConfigureAwait(false);
+                if (ct.IsCancellationRequested) return;
+                _currentSelections[i].TypingDone = true;
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(80, ct).ConfigureAwait(false);
+                if (ct.IsCancellationRequested) return;
+            }
+
+            return; // 선택 대기 — ChooseSelection이 RunEventAsync()를 다시 호출
         }
-
-        _ = MarkItemDoneAsync(_contentItems.Count - 1);
-    }
-
-    async Task MarkItemDoneAsync(int idx)
-    {
-        _typing = true;
-        int ms = Math.Min(_contentItems[idx].DisplayText.Length * 35, 2000);
-        if (ms < 200) ms = 200;
-        await Task.Delay(ms);
-        if (idx < _contentItems.Count)
-            _contentItems[idx].Done = true;
-        _typing = false;
-        await ScrollToBottomAsync();
-        StateHasChanged();
-
-        // 다음 항목 자동 진행 (짧은 텀)
-        await Task.Delay(300);
-        ShowNextItem();
     }
 
     void OnTap()
     {
         if (_showSelections || _showBattle || _showInventory || _showPopup) return;
-
-        // 타이핑 중이면 즉시 완료 처리
-        if (_typing)
-        {
-            var last = _contentItems.LastOrDefault();
-            if (last != null && !last.Done) { last.Done = true; _typing = false; }
-            StateHasChanged();
-        }
+        // 타이핑 중이면 즉시 스킵
+        if (_typing) { _typing = false; StateHasChanged(); }
     }
 
     void PrepareSelections()
+    {
+        // 하위 호환 — RunBlockLoopAsync로 대체됨 (ChooseSelection에서만 사용)
+    }
+
+    void LegacySelections_unused()
     {
         _showTopInfo = false;
         _currentSelections.Clear();
@@ -449,10 +493,8 @@
 
         if (_block.Selections.Count == 0)
         {
-            // 선택지 없음 → 공통 이펙트 적용 후 다음 블록
-            foreach (var e in _block.CommonEffects) GSS.ApplyEffect(e);
+            foreach (var e in _block.CommonEffects ?? new()) GSS.ApplyEffect(e);
             _blockIdx++;
-            LoadBlock();
             return;
         }
 
@@ -520,12 +562,12 @@
 
         if (!string.IsNullOrEmpty(resultText))
         {
-            ShowPopup("", resultText, "확인", () => { _blockIdx++; LoadBlock(); });
+            ShowPopup("", resultText, "확인", () => { _blockIdx++; RunEventAsync(); });
         }
         else
         {
             _blockIdx++;
-            LoadBlock();
+            RunEventAsync();
         }
     }
 
@@ -560,7 +602,8 @@
             Done = false
         };
         _contentItems.Add(demo);
-        _ = MarkItemDoneAsync(0);
+        demo.Done = false;
+        _ = Task.Delay(1800).ContinueWith(_ => InvokeAsync(() => { demo.Done = true; StateHasChanged(); }));
 
         // 데모 선택지
         _currentSelections = new List<SelectionItem>
@@ -696,7 +739,7 @@
         else
         {
             _blockIdx++;
-            if (_evt != null) LoadBlock();
+            if (_evt != null) RunEventAsync();
         }
     }
 
