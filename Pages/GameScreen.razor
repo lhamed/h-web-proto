@@ -78,10 +78,6 @@
             <div class="content-image">🖼</div>
         }
     }
-    @if (_waitingForTap && !_showSelections)
-    {
-        <div class="tap-hint">▼ 탭하여 계속</div>
-    }
 </div>
 
 <!-- ── SelectionGroup: 버튼 순차 활성화 ────────────────────────────────────── -->
@@ -295,7 +291,7 @@
     List<ContentItem>   _contentItems      = new();
     List<SelectionItem> _currentSelections = new();
     int  _visibleSelCount;
-    bool _showSelections, _showTopInfo, _waitingForTap;
+    bool _showSelections, _showTopInfo;
     string _currentExpression = "🧑", _currentSpeakerName = "", _speakerSub = "";
 
     // current event/block pointers
@@ -351,7 +347,7 @@
         _blockIdx = 0;
         _contentItems.Clear();
         _showSelections  = false;
-        _waitingForTap   = false;
+        
         LoadBlock();
     }
 
@@ -359,7 +355,7 @@
     {
         if (_evt == null || _blockIdx >= _evt.ContentBlocks.Count)
         {
-            _showSelections = false; _waitingForTap = false;
+            _showSelections = false;
             // 이벤트 끝 → 다음 이벤트
             long next = ResolveNextEvent();
             if (next > 0) { StartEvent(next); return; }
@@ -422,25 +418,25 @@
         if (idx < _contentItems.Count)
             _contentItems[idx].Done = true;
         _typing = false;
-        _waitingForTap = (_itemIdx < (_block?.ContentItems.Count ?? 0));
         await ScrollToBottomAsync();
         StateHasChanged();
+
+        // 다음 항목 자동 진행 (짧은 텀)
+        await Task.Delay(300);
+        ShowNextItem();
     }
 
     void OnTap()
     {
         if (_showSelections || _showBattle || _showInventory || _showPopup) return;
 
-        // 타이핑 중이면 스킵
+        // 타이핑 중이면 즉시 완료 처리
         if (_typing)
         {
             var last = _contentItems.LastOrDefault();
-            if (last != null && !last.Done) { last.Done = true; _typing = false; _waitingForTap = true; }
+            if (last != null && !last.Done) { last.Done = true; _typing = false; }
             StateHasChanged();
-            return;
         }
-
-        if (_waitingForTap) { _waitingForTap = false; ShowNextItem(); }
     }
 
     void PrepareSelections()
