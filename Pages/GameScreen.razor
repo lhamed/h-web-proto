@@ -1,0 +1,776 @@
+@page "/game"
+@inject GameDataService GDS
+@inject GameStateService GSS
+@inject NavigationManager Nav
+@implements IDisposable
+
+<!-- ── HUD Bar ─────────────────────────────────────────────────────────────── -->
+<div class="hud-bar">
+    <div class="hud-bar-section">
+        <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">HP</span>
+        <div style="display:flex;gap:2px;align-items:center">
+            @for (int i = 0; i < GSS.MaxHp; i++)
+            {
+                bool filled = i < GSS.Hp;
+                bool blink  = filled && i == GSS.Hp - 1 && GSS.Hp <= 2;
+                <div style="width:10px;height:16px;border-radius:2px;background:@(filled?"var(--hp-color)":"rgba(255,255,255,0.07)");@(blink?"animation:cell-blink 0.7s ease-in-out infinite;":"")"></div>
+            }
+        </div>
+    </div>
+
+    <div class="hud-bar-section center">
+        <div class="hud-level-pill">
+            <span style="font-size:9px">Lv</span>
+            <span class="hud-level-num">@GSS.Level</span>
+        </div>
+    </div>
+
+    <div class="hud-bar-section end" style="gap:8px">
+        <div style="display:flex;gap:2px;align-items:center">
+            <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-right:3px">정신</span>
+            @for (int i = 0; i < GSS.MaxMental; i++)
+            {
+                <div style="width:7px;height:13px;border-radius:2px;background:@(i<GSS.Mental?"var(--mental-color)":"rgba(255,255,255,0.07)")"></div>
+            }
+        </div>
+        <button class="hud-inv-btn" @onclick="OpenInventory" title="인벤토리">🎒</button>
+        <button class="hud-inv-btn" @onclick='() => Nav.NavigateTo("/status")' title="스탯">📊</button>
+    </div>
+</div>
+
+<div class="game-layout" style="position:relative;flex:1;overflow:hidden">
+
+<!-- ── TopInfoPanel: Dialogue 타입일 때만 표시 ──────────────────────────────── -->
+<div class="top-info-panel @(_showTopInfo ? "visible" : "")">
+    <div class="expression-wrap">@_currentExpression</div>
+    <div class="speaker-info">
+        <div class="speaker-name-text">@_currentSpeakerName</div>
+        <div class="speaker-sub">@_speakerSub</div>
+    </div>
+</div>
+
+<!-- ── ContentScrollPanel ─────────────────────────────────────────────────── -->
+<div class="content-scroll-panel" @onclick="OnTap" @ref="_scrollEl">
+    @foreach (var item in _contentItems)
+    {
+        @if (item.Type == "Narration")
+        {
+            <div class="content-narration">
+                @item.DisplayText
+                @if (!item.Done) { <span class="cursor-blink"></span> }
+            </div>
+        }
+        else if (item.Type == "Dialogue")
+        {
+            <div class="content-dialogue">
+                <div class="portrait">@item.Portrait</div>
+                <div class="bubble">
+                    <div class="name">@item.Speaker</div>
+                    <div class="text">
+                        @item.DisplayText
+                        @if (!item.Done) { <span class="cursor-blink"></span> }
+                    </div>
+                </div>
+            </div>
+        }
+        else if (item.Type == "Image")
+        {
+            <div class="content-image">🖼</div>
+        }
+    }
+    @if (_waitingForTap && !_showSelections)
+    {
+        <div class="tap-hint">▼ 탭하여 계속</div>
+    }
+</div>
+
+<!-- ── SelectionGroup: 버튼 순차 활성화 ────────────────────────────────────── -->
+@if (_showSelections && _visibleSelCount > 0)
+{
+    <div class="selection-group">
+        @for (int i = 0; i < _visibleSelCount; i++)
+        {
+            int idx = i;
+            var sel = _currentSelections[idx];
+            <button class="sel-btn" @onclick="() => ChooseSelection(idx)">
+                <span>@sel.DisplayText @(sel.TypingDone ? "" : "")</span>
+                @if (!sel.TypingDone) { <span class="cursor-blink"></span> }
+                <span class="sel-arr">▶</span>
+            </button>
+        }
+    </div>
+}
+
+<!-- ── Battle Overlay ─────────────────────────────────────────────────────── -->
+@if (_showBattle)
+{
+    <div class="battle-overlay">
+        <div class="battle-header-bar">
+            <div class="battle-heading">⚔️ 전투</div>
+            <div class="battle-turn-tag">턴 @_battleTurn</div>
+        </div>
+
+        <div class="battle-arena">
+            <div>
+                <div class="arena-side-label">적</div>
+                <div class="arena-units">
+                    @foreach (var e in _battleEnemies)
+                    {
+                        <div class="battle-card enemy @(e.Active?"active":"") @(e.Hp<=0?"dead":"")">
+                            <div class="bc-name">@e.Name</div>
+                            <div class="bc-hp">@e.Hp / @e.MaxHp</div>
+                            <div class="bc-bar"><div class="bc-bar-fill" style="width:@(e.MaxHp>0?e.Hp*100/e.MaxHp:0)%"></div></div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="battle-vsline">
+                <div class="battle-vsline-bar"></div>
+                <div class="battle-vsline-icon">⚔️</div>
+                <div class="battle-vsline-bar"></div>
+            </div>
+            <div>
+                <div class="arena-side-label">아군</div>
+                <div class="arena-units">
+                    <div class="battle-card ally @(_playerActive?"active":"") @(GSS.Hp<=0?"dead":"")">
+                        <div class="bc-name">🧝 플레이어</div>
+                        <div class="bc-hp">@GSS.Hp / @GSS.MaxHp</div>
+                        <div class="bc-bar"><div class="bc-bar-fill" style="width:@(GSS.MaxHp>0?GSS.Hp*100/GSS.MaxHp:0)%"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="battle-log-box">
+            @foreach (var log in _battleLogs)
+            {
+                <div class="@log.Cls">@log.Text</div>
+            }
+        </div>
+
+        @if (_battleDone)
+        {
+            <div class="battle-result-panel">
+                <div class="dice-row">
+                    @foreach (var d in _battleDice)
+                    {
+                        <div class="die @(_diceRolling?"roll":"")">@d</div>
+                    }
+                </div>
+                <button class="sel-btn" @onclick="EndBattle">
+                    @(_battleVictory ? "⭐ 승리! 계속하기" : "💀 패배... 계속하기")
+                    <span class="sel-arr">▶</span>
+                </button>
+            </div>
+        }
+        else if (!_battlePlayerTurn)
+        {
+            <div class="battle-result-panel" style="align-items:center">
+                <div style="font-size:12px;color:var(--text-muted);animation:hint-blink 1s infinite">⏳ 적의 차례...</div>
+            </div>
+        }
+        else
+        {
+            <div class="battle-result-panel">
+                <div class="dice-row">
+                    @foreach (var d in _battleDice)
+                    {
+                        <div class="die @(_diceRolling?"roll":"")">@d</div>
+                    }
+                </div>
+                <button class="sel-btn" @onclick="BattleAttack">⚔️ 공격 <span class="sel-arr">▶</span></button>
+                <button class="sel-btn" @onclick="BattleDefend">🛡️ 방어 <span class="sel-arr">▶</span></button>
+                <button class="sel-btn" @onclick="BattleFlee">🏃 도망 <span class="sel-arr">▶</span></button>
+            </div>
+        }
+    </div>
+}
+
+<!-- ── Inventory Overlay ───────────────────────────────────────────────────── -->
+@if (_showInventory)
+{
+    <div class="inv-overlay">
+        <div class="inv-bg" @onclick="CloseInventory"></div>
+        <div class="inv-panel">
+            <div class="inv-drag-handle"></div>
+            <div class="inv-title">🎒 인벤토리</div>
+            <div class="inv-scroll">
+                @if (GDS.IsLoaded && GSS.Inventory.Count > 0)
+                {
+                    <div class="inv-grid">
+                        @foreach (var (key, cnt) in GSS.Inventory)
+                        {
+                            var k = key;
+                            var it = GDS.GetItem(key);
+                            <div class="inv-slot @(_invSelected==k?"sel":"")" @onclick="() => _invSelected = k">
+                                <div class="inv-slot-icon">@(it?.Equippable==true?"⚔️":it?.Usable==true?"🧪":"📦")</div>
+                                <div class="inv-slot-name">@GDS.L(it?.NameKey)</div>
+                                @if (cnt > 1) { <div class="inv-slot-count">@cnt</div> }
+                            </div>
+                        }
+                    </div>
+                    @if (_invSelected > 0 && GDS.GetItem(_invSelected) is { } selItem)
+                    {
+                        <div class="inv-detail">
+                            <div class="inv-detail-name">@GDS.L(selItem.NameKey)</div>
+                            <div class="inv-detail-desc">@GDS.L(selItem.DescriptionKey)</div>
+                            <div class="inv-detail-btns">
+                                @if (selItem.Usable)
+                                {
+                                    <button class="game-btn" @onclick="UseInvItem">사용</button>
+                                }
+                                @if (selItem.Equippable)
+                                {
+                                    <button class="game-btn secondary" @onclick="EquipInvItem">장착</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else if (!GDS.IsLoaded)
+                {
+                    <div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">
+                        데이터 없음 — <a href="/import" style="color:var(--accent)">불러오기</a>
+                    </div>
+                }
+                else
+                {
+                    <div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">소지품이 없습니다.</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Popup Overlay ──────────────────────────────────────────────────────── -->
+@if (_showPopup)
+{
+    <div class="popup-overlay">
+        <div class="popup-box">
+            <div class="popup-title">@_popupTitle</div>
+            <div class="popup-message">@_popupMsg</div>
+            <div class="popup-buttons">
+                <button class="popup-btn confirm" @onclick="ClosePopup">@_popupConfirmText</button>
+                @if (_popupShowCancel)
+                {
+                    <button class="popup-btn cancel" @onclick="CancelPopup">취소</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Game Over Fullscreen ───────────────────────────────────────────────── -->
+@if (GSS.IsGameOver && _showGameOver)
+{
+    <div class="go-overlay">
+        <div class="go-title">GAME OVER</div>
+        <div class="go-sub">쓰러졌다...</div>
+        <button class="go-btn" @onclick="RestartGame">처음으로</button>
+    </div>
+}
+
+</div><!-- end game-layout -->
+
+@code {
+    // ── Content Item ─────────────────────────────────────────────────────────
+    class ContentItem
+    {
+        public string Type        { get; set; } = "";
+        public string DisplayText { get; set; } = "";
+        public string Speaker     { get; set; } = "";
+        public string Portrait    { get; set; } = "🧑";
+        public bool   Done        { get; set; }
+    }
+
+    class SelectionItem
+    {
+        public string DisplayText { get; set; } = "";
+        public bool   TypingDone  { get; set; }
+        // runtime callbacks
+        public HWebProto.Models.SelectionDto? Source { get; set; }
+    }
+
+    // ── State ────────────────────────────────────────────────────────────────
+    List<ContentItem>   _contentItems      = new();
+    List<SelectionItem> _currentSelections = new();
+    int  _visibleSelCount;
+    bool _showSelections, _showTopInfo, _waitingForTap;
+    string _currentExpression = "🧑", _currentSpeakerName = "", _speakerSub = "";
+
+    // current event/block pointers
+    HWebProto.Models.GameEventDto?    _evt;
+    HWebProto.Models.ContentBlockDto? _block;
+    int _blockIdx, _itemIdx;
+    bool _typing;
+
+    // overlays
+    bool   _showInventory, _showPopup, _showGameOver = true;
+    bool   _showBattle, _battleDone, _battleVictory, _diceRolling, _battlePlayerTurn, _playerActive;
+    int    _battleTurn;
+    string _popupTitle = "", _popupMsg = "", _popupConfirmText = "확인";
+    bool   _popupShowCancel;
+    Action? _popupOnConfirm, _popupOnCancel;
+    long   _invSelected;
+
+    // battle
+    class BUnit { public string Name=""; public int Hp,MaxHp,Faces=6,Count=1; public bool Active; }
+    List<BUnit> _battleEnemies = new();
+    List<(string Text, string Cls)> _battleLogs = new();
+    int[] _battleDice = {1,1};
+    long _victoryEvtKey, _defeatEvtKey;
+
+    Microsoft.AspNetCore.Components.ElementReference _scrollEl;
+    static readonly Random _rng = new();
+    static readonly string[] _bgEmojis = {"🌙","🏚","🏮","⛩","🌲","🏔","🌊","🗡","🔥","🏜"};
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        GSS.OnStateChanged += OnStateChanged;
+        if (GDS.IsLoaded)
+            StartEvent(GSS.CurrentEventKey > 0 ? GSS.CurrentEventKey : GDS.FirstEventKey());
+        else
+            StartDemoMode();
+    }
+
+    void OnStateChanged() => StateHasChanged();
+    public void Dispose() => GSS.OnStateChanged -= OnStateChanged;
+
+    // ── Event Engine ─────────────────────────────────────────────────────────
+    void StartEvent(long key)
+    {
+        _evt = GDS.GetEvent(key);
+        if (_evt == null) { StartDemoMode(); return; }
+
+        // 조건 체크
+        bool ok = (_evt.Conditions?.Count ?? 0) == 0
+               || _evt.Conditions!.All(c => GSS.CheckCondition(c));
+        if (!ok) { _evt = null; StartDemoMode(); return; }
+
+        _blockIdx = 0;
+        _contentItems.Clear();
+        _showSelections  = false;
+        _waitingForTap   = false;
+        LoadBlock();
+    }
+
+    void LoadBlock()
+    {
+        if (_evt == null || _blockIdx >= _evt.ContentBlocks.Count)
+        {
+            _showSelections = false; _waitingForTap = false;
+            // 이벤트 끝 → 다음 이벤트
+            long next = ResolveNextEvent();
+            if (next > 0) { StartEvent(next); return; }
+            // 체인 종료
+            ShowPopup("...", "더 이상 이야기가 없습니다.", "확인", () => { });
+            return;
+        }
+        _block   = _evt.ContentBlocks[_blockIdx];
+        _itemIdx = 0;
+        ShowNextItem();
+    }
+
+    void ShowNextItem()
+    {
+        if (_block == null) return;
+        if (_itemIdx >= _block.ContentItems.Count)
+        {
+            // 블록 끝 → 선택지
+            PrepareSelections();
+            return;
+        }
+        var raw = _block.ContentItems[_itemIdx];
+        string text    = GDS.L(raw.TextKey);
+        string speaker = GDS.L(raw.SpeakerNameKey);
+        bool isDialogue = raw.Type == "Dialogue";
+
+        var ci = new ContentItem
+        {
+            Type        = raw.Type,
+            DisplayText = text,
+            Speaker     = speaker,
+            Portrait    = "🧑",
+            Done        = false
+        };
+        _contentItems.Add(ci);
+        _itemIdx++;
+
+        // TopInfoPanel
+        if (isDialogue && !string.IsNullOrEmpty(speaker))
+        {
+            _showTopInfo        = true;
+            _currentSpeakerName = speaker;
+            _currentExpression  = "🧑";
+            _speakerSub         = "";
+        }
+        else if (!isDialogue)
+        {
+            _showTopInfo = false;
+        }
+
+        _ = MarkItemDoneAsync(_contentItems.Count - 1);
+    }
+
+    async Task MarkItemDoneAsync(int idx)
+    {
+        _typing = true;
+        int ms = Math.Min(_contentItems[idx].DisplayText.Length * 35, 2000);
+        if (ms < 200) ms = 200;
+        await Task.Delay(ms);
+        if (idx < _contentItems.Count)
+            _contentItems[idx].Done = true;
+        _typing = false;
+        _waitingForTap = (_itemIdx < (_block?.ContentItems.Count ?? 0));
+        await ScrollToBottomAsync();
+        StateHasChanged();
+    }
+
+    void OnTap()
+    {
+        if (_showSelections || _showBattle || _showInventory || _showPopup) return;
+
+        // 타이핑 중이면 스킵
+        if (_typing)
+        {
+            var last = _contentItems.LastOrDefault();
+            if (last != null && !last.Done) { last.Done = true; _typing = false; _waitingForTap = true; }
+            StateHasChanged();
+            return;
+        }
+
+        if (_waitingForTap) { _waitingForTap = false; ShowNextItem(); }
+    }
+
+    void PrepareSelections()
+    {
+        _showTopInfo = false;
+        _currentSelections.Clear();
+        _visibleSelCount = 0;
+
+        if (_block == null) return;
+
+        if (_block.Selections.Count == 0)
+        {
+            // 선택지 없음 → 공통 이펙트 적용 후 다음 블록
+            foreach (var e in _block.CommonEffects) GSS.ApplyEffect(e);
+            _blockIdx++;
+            LoadBlock();
+            return;
+        }
+
+        foreach (var sel in _block.Selections)
+        {
+            _currentSelections.Add(new SelectionItem
+            {
+                DisplayText = GDS.L(sel.SelectionTextKey),
+                TypingDone  = false,
+                Source      = sel
+            });
+        }
+
+        _showSelections = true;
+        _ = RevealSelectionsAsync();
+    }
+
+    async Task RevealSelectionsAsync()
+    {
+        for (int i = 0; i < _currentSelections.Count; i++)
+        {
+            _visibleSelCount = i + 1;
+            StateHasChanged();
+            // 버튼당 타이핑 딜레이
+            int ms = Math.Min(_currentSelections[i].DisplayText.Length * 30, 800);
+            await Task.Delay(Math.Max(ms, 200));
+            _currentSelections[i].TypingDone = true;
+            StateHasChanged();
+            await Task.Delay(80);
+        }
+    }
+
+    void ChooseSelection(int idx)
+    {
+        if (idx >= _currentSelections.Count) return;
+        var sel = _currentSelections[idx];
+        var src = sel.Source;
+        _showSelections = false;
+        _visibleSelCount = 0;
+
+        if (_block != null)
+            foreach (var e in _block.CommonEffects) GSS.ApplyEffect(e);
+
+        if (src != null)
+            foreach (var e in src.Effects ?? new()) GSS.ApplyEffect(e);
+
+        string resultText = src != null ? GDS.L(src.ResultTextKey) : "";
+
+        // 전투 효과
+        if (src != null && (src.BattleVictoryEventKey > 0 || src.BattleDefeatEventKey > 0))
+        {
+            _victoryEvtKey = src.BattleVictoryEventKey;
+            _defeatEvtKey  = src.BattleDefeatEventKey;
+
+            if (!string.IsNullOrEmpty(resultText))
+                ShowPopup("전투 시작", resultText, "시작!", () => LaunchBattle());
+            else
+                LaunchBattle();
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(resultText))
+        {
+            ShowPopup("", resultText, "확인", () => { _blockIdx++; LoadBlock(); });
+        }
+        else
+        {
+            _blockIdx++;
+            LoadBlock();
+        }
+    }
+
+    long ResolveNextEvent()
+    {
+        if (_evt == null) return 0;
+        return _evt.NextEventMode switch
+        {
+            "First"           => _evt.NextEventKeys?.FirstOrDefault() ?? 0,
+            "Random"          => _evt.NextEventKeys?.Count > 0
+                                 ? _evt.NextEventKeys[_rng.Next(_evt.NextEventKeys.Count)] : 0,
+            "ConditionalList" => _evt.NextEventEntries?
+                                 .FirstOrDefault(e => e.Conditions.All(c => GSS.CheckCondition(c)))
+                                 ?.EventKey ?? 0,
+            _ => _evt.NextEventKeys?.FirstOrDefault() ?? 0
+        };
+    }
+
+    // ── Demo Mode (데이터 없을 때) ────────────────────────────────────────────
+    void StartDemoMode()
+    {
+        _contentItems.Clear();
+        _showSelections = false;
+        _evt = null;
+
+        var demo = new ContentItem
+        {
+            Type = "Narration",
+            DisplayText = GDS.IsLoaded
+                ? "이벤트 데이터가 있지만 시작 이벤트를 찾을 수 없습니다."
+                : "EXPORTED.bytes를 불러오면 실제 게임 데이터로 플레이됩니다.\n지금은 데모 모드입니다.",
+            Done = false
+        };
+        _contentItems.Add(demo);
+        _ = MarkItemDoneAsync(0);
+
+        // 데모 선택지
+        _currentSelections = new List<SelectionItem>
+        {
+            new() { DisplayText = "📦 데이터 불러오기",  TypingDone = true, Source = null },
+            new() { DisplayText = "📊 스탯 보기",         TypingDone = true, Source = null },
+        };
+        _ = Task.Delay(1200).ContinueWith(_ =>
+        {
+            _showSelections  = true;
+            _visibleSelCount = _currentSelections.Count;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    void ChooseDemoSelection(int idx)
+    {
+        if (idx == 0) Nav.NavigateTo("/import");
+        if (idx == 1) Nav.NavigateTo("/status");
+    }
+
+    // ── Battle ───────────────────────────────────────────────────────────────
+    void LaunchBattle()
+    {
+        _battleEnemies.Clear(); _battleLogs.Clear();
+        _battleTurn = 1; _battleDone = false; _battleVictory = false;
+        _battlePlayerTurn = true; _playerActive = true;
+
+        if (GDS.IsLoaded && GSS.PendingBattleKey > 0)
+        {
+            var battle = GDS.GetBattle(GSS.PendingBattleKey);
+            var group  = battle != null ? GDS.GetMonsterGroup(battle.MonsterGroupKey) : null;
+            if (group != null)
+            {
+                foreach (var mKey in group.MemberKeys)
+                {
+                    var unit = GDS.GetUnit(mKey);
+                    if (unit == null) continue;
+                    var dice = unit.AttackDiceKey > 0 ? GDS.GetDice(unit.AttackDiceKey) : null;
+                    _battleEnemies.Add(new BUnit
+                    {
+                        Name  = GDS.L(unit.NameKey),
+                        Hp = unit.MaxHP, MaxHp = unit.MaxHP,
+                        Faces = dice?.Faces ?? 6, Count = dice?.Count ?? 1
+                    });
+                }
+            }
+        }
+
+        if (_battleEnemies.Count == 0)
+        {
+            _battleEnemies.Add(new BUnit { Name="해골 전사", Hp=10, MaxHp=10, Faces=6, Count=1 });
+            _battleEnemies.Add(new BUnit { Name="슬라임",    Hp=6,  MaxHp=6,  Faces=4, Count=2 });
+        }
+
+        _battleDice = new int[2];
+        RollDice();
+        _showBattle = true;
+        AddBattleLog("전투 시작!", "");
+    }
+
+    async Task BattleAttack()
+    {
+        _diceRolling = true; RollDice(); StateHasChanged();
+        await Task.Delay(500);
+        _diceRolling = false;
+
+        int dmg = _battleDice.Sum();
+        var target = _battleEnemies.FirstOrDefault(e => e.Hp > 0);
+        if (target != null)
+        {
+            target.Hp = Math.Max(0, target.Hp - dmg);
+            AddBattleLog($"⚔️ {dmg} 피해 → {target.Name} ({target.Hp}/{target.MaxHp})", "blog-dmg");
+            if (target.Hp <= 0)
+            {
+                AddBattleLog($"✨ {target.Name} 처치!", "blog-win");
+                GSS.ApplyEffect(new HWebProto.Models.EffectDto { DataType = "Exp", Op = "Add", Value = 25 });
+            }
+        }
+
+        if (_battleEnemies.All(e => e.Hp <= 0))
+        {
+            AddBattleLog("🏆 승리!", "blog-win");
+            _battleVictory = true; _battleDone = true; return;
+        }
+
+        _battlePlayerTurn = false; _playerActive = false;
+        await EnemyTurnAsync();
+    }
+
+    async Task BattleDefend()
+    {
+        AddBattleLog("🛡 방어 자세 — 다음 피해 감소", "");
+        _battlePlayerTurn = false;
+        await EnemyTurnAsync();
+    }
+
+    void BattleFlee()
+    {
+        bool ok = _rng.Next(2) == 0;
+        AddBattleLog(ok ? "🏃 도주 성공!" : "❌ 도주 실패!", ok ? "blog-win" : "blog-dmg");
+        if (ok) { _battleDone = true; _battleVictory = false; }
+    }
+
+    async Task EnemyTurnAsync()
+    {
+        await Task.Delay(700);
+        _battleTurn++;
+        foreach (var e in _battleEnemies.Where(e => e.Hp > 0))
+        {
+            e.Active = true; StateHasChanged(); await Task.Delay(350);
+            int dmg = 0;
+            for (int i = 0; i < e.Count; i++) dmg += _rng.Next(1, e.Faces + 1);
+            GSS.ApplyEffect(new HWebProto.Models.EffectDto { DataType = "HP", Op = "Subtract", Value = dmg });
+            AddBattleLog($"💢 {e.Name} → 플레이어 {dmg} 피해", "blog-dmg");
+            e.Active = false;
+            if (GSS.IsGameOver) break;
+        }
+        if (GSS.IsGameOver) { _battleDone = true; _battleVictory = false; return; }
+        _battlePlayerTurn = true; _playerActive = true;
+        StateHasChanged();
+    }
+
+    void EndBattle()
+    {
+        _showBattle = false;
+        long next = _battleVictory ? _victoryEvtKey : _defeatEvtKey;
+        if (next > 0)
+        {
+            GSS.CurrentEventKey = next;
+            StartEvent(next);
+        }
+        else
+        {
+            _blockIdx++;
+            if (_evt != null) LoadBlock();
+        }
+    }
+
+    void RollDice()
+    {
+        for (int i = 0; i < _battleDice.Length; i++)
+            _battleDice[i] = _rng.Next(1, 7);
+    }
+
+    void AddBattleLog(string text, string cls)
+    {
+        _battleLogs.Add((text, cls));
+        if (_battleLogs.Count > 10) _battleLogs.RemoveAt(0);
+    }
+
+    // ── Inventory ────────────────────────────────────────────────────────────
+    void OpenInventory()  { _invSelected = 0; _showInventory = true; }
+    void CloseInventory() { _showInventory = false; }
+
+    void UseInvItem()
+    {
+        var item = GDS.GetItem(_invSelected);
+        if (item == null || !item.Usable) return;
+        if (GSS.UseItem(_invSelected))
+        {
+            GSS.ApplyEffect(new HWebProto.Models.EffectDto { DataType = "HP", Op = "Add", Value = 3 });
+            ShowPopup("사용 완료", $"{GDS.L(item.NameKey)}을(를) 사용했다.", "확인", () => { });
+        }
+        _invSelected = 0;
+    }
+
+    void EquipInvItem()
+    {
+        var item = GDS.GetItem(_invSelected);
+        if (item == null || !item.Equippable) return;
+        string slot = GDS.EquipTypeToSlot(item.EquipmentType);
+        if (!string.IsNullOrEmpty(slot))
+        {
+            GSS.EquipItem(slot, _invSelected);
+            ShowPopup("장착 완료", $"{GDS.L(item.NameKey)}을(를) 장착했다.", "확인", () => { });
+        }
+        _invSelected = 0;
+    }
+
+    // ── Popup ────────────────────────────────────────────────────────────────
+    void ShowPopup(string title, string msg, string confirmTxt, Action onConfirm, bool showCancel = false, Action? onCancel = null)
+    {
+        _popupTitle       = title;
+        _popupMsg         = msg;
+        _popupConfirmText = confirmTxt;
+        _popupShowCancel  = showCancel;
+        _popupOnConfirm   = onConfirm;
+        _popupOnCancel    = onCancel;
+        _showPopup        = true;
+    }
+
+    void ClosePopup()
+    {
+        _showPopup = false;
+        _popupOnConfirm?.Invoke();
+    }
+
+    void CancelPopup()
+    {
+        _showPopup = false;
+        _popupOnCancel?.Invoke();
+    }
+
+    // ── Game Over ────────────────────────────────────────────────────────────
+    void RestartGame() => Nav.NavigateTo("/import");
+
+    // ── Scroll to bottom ─────────────────────────────────────────────────────
+    async Task ScrollToBottomAsync()
+    {
+        try { await Task.Delay(50); StateHasChanged(); } catch { }
+    }
+}
