@@ -105,10 +105,10 @@ namespace HWebProto.Services
         public BattleDataDto?   GetBattle(long key)  => Data?.BattleDatas  .FirstOrDefault(b => b.Key == key);
 
         public long FirstEventKey()
-            => Data?.GameEvents?.FirstOrDefault()?.Key ?? 0;
+            => Data?.GameEvents?.OrderBy(e => e.Key).FirstOrDefault()?.Key ?? 0;
 
         public long FirstBattleKey()
-            => Data?.BattleDatas?.FirstOrDefault()?.Key ?? 0;
+            => Data?.BattleDatas?.OrderBy(b => b.Key).FirstOrDefault()?.Key ?? 0;
 
         // 슬롯 이름 → 아이템 키 조회 헬퍼
         public long GetEquippedKey(GameUnitDto unit, string slot) => slot switch

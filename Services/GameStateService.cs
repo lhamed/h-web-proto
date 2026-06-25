@@ -52,16 +52,16 @@ namespace HWebProto.Services
         /// </summary>
         public void InitFromData(GameDataService gds)
         {
-            var firstUnit = gds.Data?.GameUnits.Count > 0 ? gds.Data.GameUnits[0] : null;
-            if (firstUnit != null)
+            var playerUnit = gds.GetUnit(1) ?? gds.Data?.GameUnits.Find(u => u.CanEquipItems);
+            if (playerUnit != null)
             {
-                MaxHp = firstUnit.MaxHP;
+                MaxHp = playerUnit.MaxHP;
                 Hp    = MaxHp;
                 // 장비 초기화
                 Equipment.Clear();
                 foreach (var slot in new[] { "head","left","body","right","shoes","ring1","ring2" })
                 {
-                    long k = gds.GetEquippedKey(firstUnit, slot);
+                    long k = gds.GetEquippedKey(playerUnit, slot);
                     if (k > 0) Equipment[slot] = k;
                 }
             }

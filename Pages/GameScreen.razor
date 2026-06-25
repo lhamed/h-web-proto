@@ -2,6 +2,7 @@
 @inject GameDataService GDS
 @inject GameStateService GSS
 @inject NavigationManager Nav
+@inject HttpClient Http
 @implements IDisposable
 
 <!-- ── HUD Bar ─────────────────────────────────────────────────────────────── -->
@@ -302,7 +303,7 @@
 
     // overlays
     bool   _showInventory, _showPopup, _showGameOver = true;
-    bool   _showBattle, _battleDone, _battleVictory, _diceRolling, _battlePlayerTurn, _playerActive;
+    bool   _showBattle, _battleDone, _battleVictory, _diceRolling, _battlePlayerTurn, _playerActive, _battleDefending;
     int    _battleTurn;
     string _popupTitle = "", _popupMsg = "", _popupConfirmText = "확인";
     bool   _popupShowCancel;
@@ -315,15 +316,21 @@
     List<(string Text, string Cls)> _battleLogs = new();
     int[] _battleDice = {1,1};
     long _victoryEvtKey, _defeatEvtKey;
+    int _playerDiceCount = 2, _playerDiceFaces = 6;
 
     Microsoft.AspNetCore.Components.ElementReference _scrollEl;
     static readonly Random _rng = new();
     static readonly string[] _bgEmojis = {"🌙","🏚","🏮","⛩","🌲","🏔","🌊","🗡","🔥","🏜"};
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         GSS.OnStateChanged += OnStateChanged;
+        if (!GDS.IsLoaded)
+        {
+            await TryLoadDefaultDataAsync();
+        }
+
         if (GDS.IsLoaded)
             StartEvent(GSS.CurrentEventKey > 0 ? GSS.CurrentEventKey : GDS.FirstEventKey());
         else
@@ -335,6 +342,20 @@
     {
         GSS.OnStateChanged -= OnStateChanged;
         _runCts?.Cancel();
+    }
+
+    async Task TryLoadDefaultDataAsync()
+    {
+        try
+        {
+            var bytes = await Http.GetByteArrayAsync("data/EXPORTED.bytes");
+            GDS.Load(bytes);
+            GSS.InitFromData(GDS);
+        }
+        catch
+        {
+            // Default data is optional; import page still supports manual files.
+        }
     }
 
     // ── Event Engine ─────────────────────────────────────────────────────────
@@ -369,7 +390,8 @@
         while (!ct.IsCancellationRequested)
         {
             // ── 이벤트 끝 체크 ──────────────────────────────────────────────
-            if (_evt == null || _blockIdx >= (_evt.ContentBlocks?.Count ?? 0))
+            var blocks = _evt?.ContentBlocks;
+            if (blocks == null || _blockIdx >= blocks.Count)
             {
                 _showSelections = false;
                 long next = ResolveNextEvent();
@@ -378,7 +400,7 @@
                 return;
             }
 
-            _block   = _evt.ContentBlocks[_blockIdx];
+            _block   = blocks[_blockIdx];
             _itemIdx = 0;
 
             // ── ContentItems 순차 출력 ────────────────────────────────────
@@ -430,7 +452,8 @@
             if (sels.Count == 0)
             {
                 // 선택지 없음 → 공통 이펙트 후 다음 블록
-                foreach (var e in _block.CommonEffects ?? new()) GSS.ApplyEffect(e);
+                foreach (var e in _block.CommonEffects ?? new())
+                    if (!IsBattleEffect(e)) GSS.ApplyEffect(e);
                 _blockIdx++;
                 continue; // 루프 다음 반복 = 다음 블록 로드
             }
@@ -540,16 +563,21 @@
         _visibleSelCount = 0;
 
         if (_block != null)
-            foreach (var e in _block.CommonEffects) GSS.ApplyEffect(e);
+            foreach (var e in _block.CommonEffects)
+                if (!IsBattleEffect(e)) GSS.ApplyEffect(e);
+
+        var battleKey = src != null ? GetBattleKey(src) : 0;
 
         if (src != null)
-            foreach (var e in src.Effects ?? new()) GSS.ApplyEffect(e);
+            foreach (var e in src.Effects ?? new())
+                if (!IsBattleEffect(e)) GSS.ApplyEffect(e);
 
         string resultText = src != null ? GDS.L(src.ResultTextKey) : "";
 
         // 전투 효과
-        if (src != null && (src.BattleVictoryEventKey > 0 || src.BattleDefeatEventKey > 0))
+        if (src != null && (battleKey > 0 || src.BattleVictoryEventKey > 0 || src.BattleDefeatEventKey > 0))
         {
+            GSS.PendingBattleKey = battleKey > 0 ? battleKey : GDS.FirstBattleKey();
             _victoryEvtKey = src.BattleVictoryEventKey;
             _defeatEvtKey  = src.BattleDefeatEventKey;
 
@@ -570,6 +598,12 @@
             RunEventAsync();
         }
     }
+
+    static bool IsBattleEffect(HWebProto.Models.EffectDto effect)
+        => string.Equals(effect.DataType, "Battle", StringComparison.OrdinalIgnoreCase);
+
+    static long GetBattleKey(HWebProto.Models.SelectionDto selection)
+        => selection.Effects?.FirstOrDefault(IsBattleEffect)?.DataKey ?? 0;
 
     long ResolveNextEvent()
     {
@@ -629,7 +663,7 @@
     void LaunchBattle()
     {
         _battleEnemies.Clear(); _battleLogs.Clear();
-        _battleTurn = 1; _battleDone = false; _battleVictory = false;
+        _battleTurn = 1; _battleDone = false; _battleVictory = false; _battleDefending = false;
         _battlePlayerTurn = true; _playerActive = true;
 
         if (GDS.IsLoaded && GSS.PendingBattleKey > 0)
@@ -659,10 +693,14 @@
             _battleEnemies.Add(new BUnit { Name="슬라임",    Hp=6,  MaxHp=6,  Faces=4, Count=2 });
         }
 
-        _battleDice = new int[2];
+        var playerUnit = GDS.IsLoaded ? GDS.GetUnit(1) ?? GDS.Data?.GameUnits.FirstOrDefault(u => u.CanEquipItems) : null;
+        var playerDice = playerUnit?.AttackDiceKey > 0 ? GDS.GetDice(playerUnit.AttackDiceKey) : null;
+        _playerDiceCount = Math.Max(1, playerDice?.Count ?? 2);
+        _playerDiceFaces = Math.Max(2, playerDice?.Faces ?? 6);
+        _battleDice = new int[_playerDiceCount];
         RollDice();
         _showBattle = true;
-        AddBattleLog("전투 시작!", "");
+        AddBattleLog($"전투 시작! 플레이어 주사위 {_playerDiceCount}d{_playerDiceFaces}", "");
     }
 
     async Task BattleAttack()
@@ -697,15 +735,22 @@
     async Task BattleDefend()
     {
         AddBattleLog("🛡 방어 자세 — 다음 피해 감소", "");
+        _battleDefending = true;
         _battlePlayerTurn = false;
         await EnemyTurnAsync();
     }
 
-    void BattleFlee()
+    async Task BattleFlee()
     {
         bool ok = _rng.Next(2) == 0;
         AddBattleLog(ok ? "🏃 도주 성공!" : "❌ 도주 실패!", ok ? "blog-win" : "blog-dmg");
         if (ok) { _battleDone = true; _battleVictory = false; }
+        else
+        {
+            _battlePlayerTurn = false;
+            _playerActive = false;
+            await EnemyTurnAsync();
+        }
     }
 
     async Task EnemyTurnAsync()
@@ -717,12 +762,19 @@
             e.Active = true; StateHasChanged(); await Task.Delay(350);
             int dmg = 0;
             for (int i = 0; i < e.Count; i++) dmg += _rng.Next(1, e.Faces + 1);
+            if (_battleDefending)
+            {
+                int blocked = Math.Min(dmg, 2);
+                dmg -= blocked;
+                AddBattleLog($"🛡 {blocked} 피해 방어", "");
+            }
             GSS.ApplyEffect(new HWebProto.Models.EffectDto { DataType = "HP", Op = "Subtract", Value = dmg });
             AddBattleLog($"💢 {e.Name} → 플레이어 {dmg} 피해", "blog-dmg");
             e.Active = false;
             if (GSS.IsGameOver) break;
         }
         if (GSS.IsGameOver) { _battleDone = true; _battleVictory = false; return; }
+        _battleDefending = false;
         _battlePlayerTurn = true; _playerActive = true;
         StateHasChanged();
     }
@@ -746,7 +798,7 @@
     void RollDice()
     {
         for (int i = 0; i < _battleDice.Length; i++)
-            _battleDice[i] = _rng.Next(1, 7);
+            _battleDice[i] = _rng.Next(1, _playerDiceFaces + 1);
     }
 
     void AddBattleLog(string text, string cls)

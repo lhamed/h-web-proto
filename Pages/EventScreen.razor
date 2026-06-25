@@ -208,15 +208,19 @@ else
         _showSelections = false;
 
         // 공통 이펙트 적용
-        foreach (var e in _block?.CommonEffects ?? new()) GSS.ApplyEffect(e);
+        foreach (var e in _block?.CommonEffects ?? new())
+            if (!IsBattleEffect(e)) GSS.ApplyEffect(e);
         // 선택지 이펙트 적용
-        foreach (var e in sel.Effects ?? new()) GSS.ApplyEffect(e);
+        foreach (var e in sel.Effects ?? new())
+            if (!IsBattleEffect(e)) GSS.ApplyEffect(e);
 
         string resultText = GDS.L(sel.ResultTextKey);
 
-        if (sel.BattleVictoryEventKey > 0 || sel.BattleDefeatEventKey > 0)
+        long battleKey = GetBattleKey(sel);
+        if (battleKey > 0 || sel.BattleVictoryEventKey > 0 || sel.BattleDefeatEventKey > 0)
         {
             // 전투 이벤트로 전환
+            GSS.PendingBattleKey = battleKey > 0 ? battleKey : GDS.FirstBattleKey();
             GSS.VictoryEventKey = sel.BattleVictoryEventKey;
             GSS.DefeatEventKey  = sel.BattleDefeatEventKey;
             if (!string.IsNullOrEmpty(resultText))
@@ -243,6 +247,12 @@ else
             AdvanceBlock();
         }
     }
+
+    static bool IsBattleEffect(HWebProto.Models.EffectDto effect)
+        => string.Equals(effect.DataType, "Battle", StringComparison.OrdinalIgnoreCase);
+
+    static long GetBattleKey(HWebProto.Models.SelectionDto selection)
+        => selection.Effects?.FirstOrDefault(IsBattleEffect)?.DataKey ?? 0;
 
     void AdvanceBlock()
     {
