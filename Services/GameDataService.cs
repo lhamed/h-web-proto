@@ -20,16 +20,20 @@ namespace HWebProto.Services
 
         public ExportDataDto? Data { get; private set; }
         public bool IsLoaded => Data != null;
+        public bool IsUserLoaded { get; private set; }
+        public string LoadedFileName { get; private set; } = "";
 
         // 로컬라이제이션 캐시: key → 텍스트
         readonly Dictionary<string, string> _locCache = new();
         public string Lang { get; set; } = "ko";
 
-        public void Load(byte[] bytes)
+        public void Load(byte[] bytes, string fileName = "", bool userLoaded = false)
         {
             string json = System.Text.Encoding.UTF8.GetString(bytes);
             Data = JsonSerializer.Deserialize<ExportDataDto>(json, _opts)
                    ?? throw new Exception("EXPORTED.bytes 파싱 실패");
+            IsUserLoaded = userLoaded;
+            LoadedFileName = fileName;
             BuildLocalizationCache();
         }
 

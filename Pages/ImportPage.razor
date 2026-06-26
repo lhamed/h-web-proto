@@ -51,6 +51,10 @@
         var d = GDS.Data!;
         <div style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.25);border-radius:var(--radius);padding:14px">
             <div style="font-size:12px;font-weight:700;color:var(--success);margin-bottom:10px">✅ 로드 완료 · v@(d.Version)</div>
+            @if (!string.IsNullOrEmpty(GDS.LoadedFileName))
+            {
+                <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">파일: <strong style="color:var(--text)">@GDS.LoadedFileName</strong></div>
+            }
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
                 @foreach (var (label, count) in new (string,int)[] {
                     ("이벤트", d.GameEvents.Count),
@@ -71,14 +75,12 @@
         </button>
     }
 
-    <!-- 데이터 없을 때 데모 모드 -->
     @if (!GDS.IsLoaded)
     {
         <div style="border-top:1px solid var(--border);padding-top:16px">
-            <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-bottom:10px">데이터 없이 데모로 실행</div>
-            <button class="game-btn secondary" style="width:100%" @onclick='() => Nav.NavigateTo("")'>
-                데모 모드로 시작
-            </button>
+            <div style="font-size:12px;color:var(--text-muted);text-align:center;line-height:1.6">
+                업로드한 데이터가 있어야 게임을 시작합니다.
+            </div>
         </div>
     }
 
@@ -97,7 +99,7 @@
         {
             using var ms = new System.IO.MemoryStream();
             await e.File.OpenReadStream(maxAllowedSize: 10_000_000).CopyToAsync(ms);
-            GDS.Load(ms.ToArray());
+            GDS.Load(ms.ToArray(), e.File.Name, userLoaded: true);
             GSS.InitFromData(GDS);
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -115,6 +117,6 @@
     void StartGame()
     {
         if (GDS.IsLoaded)
-            Nav.NavigateTo("");
+            Nav.NavigateTo("game");
     }
 }

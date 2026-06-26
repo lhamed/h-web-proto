@@ -2,7 +2,6 @@
 @inject GameDataService GDS
 @inject GameStateService GSS
 @inject NavigationManager Nav
-@inject HttpClient Http
 @implements IDisposable
 
 <!-- ── HUD Bar ─────────────────────────────────────────────────────────────── -->
@@ -328,13 +327,12 @@
         GSS.OnStateChanged += OnStateChanged;
         if (!GDS.IsLoaded)
         {
-            await TryLoadDefaultDataAsync();
+            Nav.NavigateTo("import", replace: true);
+            return;
         }
 
-        if (GDS.IsLoaded)
-            StartEvent(GSS.CurrentEventKey > 0 ? GSS.CurrentEventKey : GDS.FirstEventKey());
-        else
-            StartDemoMode();
+        await Task.CompletedTask;
+        StartEvent(GSS.CurrentEventKey > 0 ? GSS.CurrentEventKey : GDS.FirstEventKey());
     }
 
     void OnStateChanged() => StateHasChanged();
@@ -342,20 +340,6 @@
     {
         GSS.OnStateChanged -= OnStateChanged;
         _runCts?.Cancel();
-    }
-
-    async Task TryLoadDefaultDataAsync()
-    {
-        try
-        {
-            var bytes = await Http.GetByteArrayAsync("data/EXPORTED.bytes");
-            GDS.Load(bytes);
-            GSS.InitFromData(GDS);
-        }
-        catch
-        {
-            // Default data is optional; import page still supports manual files.
-        }
     }
 
     // ── Event Engine ─────────────────────────────────────────────────────────
