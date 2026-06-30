@@ -10,6 +10,7 @@ namespace HWebProto.Models
         public List<GameEventDto>     GameEvents    { get; set; } = new();
         public List<GameItemDto>      GameItems     { get; set; } = new();
         public List<GameUnitDto>      GameUnits     { get; set; } = new();
+        public List<MonsterDataDto>   MonsterDatas  { get; set; } = new();
         public List<DiceDataDto>      DiceDatas     { get; set; } = new();
         public List<MonsterGroupDto>  MonsterGroups { get; set; } = new();
         public List<BattleDataDto>    BattleDatas   { get; set; } = new();
@@ -42,6 +43,7 @@ namespace HWebProto.Models
         public string SpeakerNameKey { get; set; } = "";
         public string ExpressionPath { get; set; } = "";
         public string ImagePath      { get; set; } = "";
+        public UIEffectDto UIEffect  { get; set; } = new();
     }
 
     public class SelectionDto
@@ -51,6 +53,21 @@ namespace HWebProto.Models
         public List<EffectDto> Effects              { get; set; } = new();
         public long           BattleVictoryEventKey { get; set; }
         public long           BattleDefeatEventKey  { get; set; }
+        public UIEffectDto    UIEffect              { get; set; } = new();
+    }
+
+    public class UIEffectDto
+    {
+        public bool OverrideEffects { get; set; }
+        public bool PanelScale { get; set; }
+        public bool PanelScaleWidth { get; set; } = true;
+        public bool PanelScaleHeight { get; set; } = true;
+        public bool FadeIn { get; set; }
+        public bool FadeOut { get; set; }
+        public bool ButtonClickScale { get; set; }
+        public bool ButtonFadePulse { get; set; }
+        public bool ButtonActive { get; set; }
+        public string SfxName { get; set; } = "";
     }
 
     public class ConditionDto
@@ -86,6 +103,14 @@ namespace HWebProto.Models
         public bool   Usable         { get; set; }
         public bool   Equippable     { get; set; }
         public string EquipmentType  { get; set; } = "None";
+        public string WeaponType     { get; set; } = "None";
+        public int    AttackPower    { get; set; }
+        public int    MeleeAttackPower { get; set; }
+        public int    MagazineSize   { get; set; }
+        public long   MagazineItemKey { get; set; }
+        public int    DefensePower   { get; set; }
+        public int    MaxHpBonus     { get; set; }
+        public int    EvasionBonus   { get; set; }
     }
 
     public class GameUnitDto
@@ -93,8 +118,15 @@ namespace HWebProto.Models
         public long   Key            { get; set; }
         public string NameKey        { get; set; } = "";
         public int    MaxHP          { get; set; } = 10;
+        public int    Mental         { get; set; } = 1;
+        public int    Vitality       { get; set; } = 1;
+        public int    Strength       { get; set; } = 1;
+        public int    Dexterity      { get; set; } = 1;
         public long   AttackDiceKey  { get; set; }
         public bool   CanEquipItems  { get; set; } = true;
+        public long   WeaponItemKey  { get; set; }
+        public int    WeaponAmmo     { get; set; }
+        public long   ArmorItemKey   { get; set; }
         public long   LeftHandItemKey  { get; set; }
         public long   RightHandItemKey { get; set; }
         public long   HeadItemKey      { get; set; }
@@ -110,6 +142,18 @@ namespace HWebProto.Models
         public int       Count       { get; set; } = 1;
         public int       Faces       { get; set; } = 6;
         public List<int> CustomFaces { get; set; } = new();
+    }
+
+    public class MonsterDataDto
+    {
+        public long   Key           { get; set; }
+        public string NameKey       { get; set; } = "";
+        public int    MaxHP         { get; set; } = 10;
+        public int    AttackPower   { get; set; } = 2;
+        public int    DefensePower  { get; set; }
+        public int    Evasion       { get; set; } = 1;
+        public int    Dexterity     { get; set; } = 1;
+        public long   AttackDiceKey { get; set; }
     }
 
     public class MonsterGroupDto

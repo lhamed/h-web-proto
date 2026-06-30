@@ -55,14 +55,14 @@
     {
         @if (item.Type == "Narration" || item.Type == "Content")
         {
-            <div class="content-narration">
+            <div class="content-narration @item.EffectClass">
                 @item.DisplayText
                 @if (!item.Done) { <span class="cursor-blink"></span> }
             </div>
         }
         else if (item.Type == "Dialogue")
         {
-            <div class="content-dialogue">
+            <div class="content-dialogue @item.EffectClass">
                 <div class="portrait">@item.Portrait</div>
                 <div class="bubble">
                     <div class="name">@item.Speaker</div>
@@ -88,7 +88,7 @@
         {
             int idx = i;
             var sel = _currentSelections[idx];
-            <button class="sel-btn" @onclick="() => ChooseSelection(idx)">
+            <button class="sel-btn @sel.EffectClass" @onclick="() => ChooseSelection(idx)">
                 <span>@sel.DisplayText @(sel.TypingDone ? "" : "")</span>
                 @if (!sel.TypingDone) { <span class="cursor-blink"></span> }
                 <span class="sel-arr">▶</span>
@@ -276,12 +276,14 @@
         public string DisplayText { get; set; } = "";
         public string Speaker     { get; set; } = "";
         public string Portrait    { get; set; } = "🧑";
+        public string EffectClass { get; set; } = "";
         public bool   Done        { get; set; }
     }
 
     class SelectionItem
     {
         public string DisplayText { get; set; } = "";
+        public string EffectClass { get; set; } = "";
         public bool   TypingDone  { get; set; }
         public HWebProto.Models.SelectionDto? Source  { get; set; }
         public Action? OnClick    { get; set; }
@@ -310,7 +312,7 @@
     long   _invSelected;
 
     // battle
-    class BUnit { public string Name=""; public int Hp,MaxHp,Faces=6,Count=1; public bool Active; }
+    class BUnit { public string Name=""; public int Hp,MaxHp,AttackPower=1,Faces=6,Count=1; public bool Active; }
     List<BUnit> _battleEnemies = new();
     List<(string Text, string Cls)> _battleLogs = new();
     int[] _battleDice = {1,1};
@@ -401,6 +403,7 @@
                     DisplayText = text,
                     Speaker     = spk,
                     Portrait    = "🧑",
+                    EffectClass = BuildEffectClass(raw.UIEffect, false),
                     Done        = false
                 };
                 _contentItems.Add(ci);
@@ -452,6 +455,7 @@
                 _currentSelections.Add(new SelectionItem
                 {
                     DisplayText = GDS.L(sel.SelectionTextKey),
+                    EffectClass = BuildEffectClass(sel.UIEffect, true),
                     TypingDone  = false,
                     Source      = sel
                 });
@@ -589,6 +593,27 @@
     static long GetBattleKey(HWebProto.Models.SelectionDto selection)
         => selection.Effects?.FirstOrDefault(IsBattleEffect)?.DataKey ?? 0;
 
+    static string BuildEffectClass(HWebProto.Models.UIEffectDto? effect, bool button)
+    {
+        if (effect == null || !effect.OverrideEffects)
+            return "";
+
+        var classes = new List<string>();
+        if (!button)
+        {
+            if (effect.PanelScale) classes.Add("fx-scale-open");
+            if (effect.FadeIn) classes.Add("fx-fade-in");
+        }
+        else
+        {
+            if (effect.ButtonActive) classes.Add("fx-button-active");
+            if (effect.ButtonFadePulse) classes.Add("fx-button-fade");
+            if (effect.ButtonClickScale) classes.Add("fx-button-click");
+        }
+
+        return string.Join(" ", classes);
+    }
+
     long ResolveNextEvent()
     {
         if (_evt == null) return 0;
@@ -658,13 +683,14 @@
             {
                 foreach (var mKey in group.MemberKeys)
                 {
-                    var unit = GDS.GetUnit(mKey);
-                    if (unit == null) continue;
-                    var dice = unit.AttackDiceKey > 0 ? GDS.GetDice(unit.AttackDiceKey) : null;
+                    var monster = GDS.GetMonster(mKey);
+                    if (monster == null) continue;
+                    var dice = monster.AttackDiceKey > 0 ? GDS.GetDice(monster.AttackDiceKey) : null;
                     _battleEnemies.Add(new BUnit
                     {
-                        Name  = GDS.L(unit.NameKey),
-                        Hp = unit.MaxHP, MaxHp = unit.MaxHP,
+                        Name  = GDS.L(monster.NameKey),
+                        Hp = monster.MaxHP, MaxHp = monster.MaxHP,
+                        AttackPower = Math.Max(1, monster.AttackPower),
                         Faces = dice?.Faces ?? 6, Count = dice?.Count ?? 1
                     });
                 }
@@ -744,7 +770,7 @@
         foreach (var e in _battleEnemies.Where(e => e.Hp > 0))
         {
             e.Active = true; StateHasChanged(); await Task.Delay(350);
-            int dmg = 0;
+            int dmg = e.AttackPower;
             for (int i = 0; i < e.Count; i++) dmg += _rng.Next(1, e.Faces + 1);
             if (_battleDefending)
             {

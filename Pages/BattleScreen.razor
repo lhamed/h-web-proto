@@ -105,6 +105,7 @@
         public string Name   { get; set; } = "";
         public int    Hp     { get; set; }
         public int    MaxHp  { get; set; }
+        public int    AttackPower { get; set; } = 1;
         public int    Faces  { get; set; } = 6;
         public int    Count  { get; set; } = 1;
         public bool   IsActive { get; set; }
@@ -137,13 +138,14 @@
                 {
                     foreach (var mKey in group.MemberKeys)
                     {
-                        var unit = GDS.GetUnit(mKey);
-                        if (unit == null) continue;
-                        var dice = unit.AttackDiceKey > 0 ? GDS.GetDice(unit.AttackDiceKey) : null;
+                        var monster = GDS.GetMonster(mKey);
+                        if (monster == null) continue;
+                        var dice = monster.AttackDiceKey > 0 ? GDS.GetDice(monster.AttackDiceKey) : null;
                         _enemies.Add(new BattleUnit
                         {
-                            Name  = GDS.L(unit.NameKey),
-                            Hp    = unit.MaxHP, MaxHp = unit.MaxHP,
+                            Name  = GDS.L(monster.NameKey),
+                            Hp    = monster.MaxHP, MaxHp = monster.MaxHP,
+                            AttackPower = Math.Max(1, monster.AttackPower),
                             Faces = dice?.Faces ?? 6, Count = dice?.Count ?? 1
                         });
                     }
@@ -225,7 +227,7 @@
         {
             e.IsActive = true; StateHasChanged();
             await Task.Delay(300);
-            int dmg = 0;
+            int dmg = e.AttackPower;
             for (int i = 0; i < e.Count; i++) dmg += _rng.Next(1, e.Faces + 1);
             GSS.ApplyEffect(new HWebProto.Models.EffectDto { DataType = "HP", Op = "Subtract", Value = dmg });
             AddLog($"💢 {e.Name} → 플레이어 {dmg} 피해", "damage");

@@ -336,6 +336,51 @@
 }
 @keyframes cursor-blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
 
+/* ── Data-driven UI Effects ─────────────────────────────────────────────────── */
+.fx-fade-in {
+    animation: fx-fade-in 0.22s ease-out both;
+}
+
+.fx-scale-open {
+    transform-origin: center;
+    animation: fx-scale-open 0.22s cubic-bezier(.2,.8,.2,1) both;
+}
+
+.fx-button-active {
+    animation: fx-button-active 0.38s ease-out both;
+}
+
+.fx-button-fade {
+    animation: fx-button-fade 0.42s ease-out both;
+}
+
+.fx-button-click:active {
+    transform: scale(1.04);
+}
+
+@keyframes fx-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fx-scale-open {
+    from { opacity: 0; transform: scale(.92); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fx-button-active {
+    0% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    50% { transform: translateX(2px); }
+    75% { transform: translateX(-1px); }
+    100% { transform: translateX(0); }
+}
+
+@keyframes fx-button-fade {
+    0% { opacity: .65; }
+    100% { opacity: 1; }
+}
+
 .dice-row { display: flex; gap: 7px; justify-content: center; margin-bottom: 8px; }
 .die {
     width: 36px; height: 36px;

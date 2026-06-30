@@ -104,6 +104,7 @@ namespace HWebProto.Services
         public GameEventDto?    GetEvent(long key)   => Data?.GameEvents   .FirstOrDefault(e => e.Key == key);
         public GameItemDto?     GetItem(long key)    => Data?.GameItems    .FirstOrDefault(i => i.Key == key);
         public GameUnitDto?     GetUnit(long key)    => Data?.GameUnits    .FirstOrDefault(u => u.Key == key);
+        public MonsterDataDto?  GetMonster(long key) => Data?.MonsterDatas .FirstOrDefault(m => m.Key == key);
         public DiceDataDto?     GetDice(long key)    => Data?.DiceDatas    .FirstOrDefault(d => d.Key == key);
         public MonsterGroupDto? GetMonsterGroup(long key) => Data?.MonsterGroups.FirstOrDefault(g => g.Key == key);
         public BattleDataDto?   GetBattle(long key)  => Data?.BattleDatas  .FirstOrDefault(b => b.Key == key);
