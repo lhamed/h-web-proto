@@ -32,6 +32,9 @@ namespace HWebProto.Services
         // ── 장비 (슬롯명 → 아이템Key) ─────────────────────────────────────────
         public Dictionary<string, long> Equipment { get; private set; } = new();
 
+        // ── 파티 (GameUnit Key 목록) ─────────────────────────────────────────
+        public List<long> PartyKeys { get; private set; } = new();
+
         // ── 플래그 (flagKey → 값) ─────────────────────────────────────────────
         public Dictionary<long, long> Flags { get; private set; } = new();
 
@@ -75,6 +78,8 @@ namespace HWebProto.Services
             Mental = MaxMental = 10;
             Level  = 1; Exp = 0; FreePoints = 3;
             Inventory.Clear(); Flags.Clear();
+            PartyKeys.Clear();
+            if (playerUnit != null) PartyKeys.Add(playerUnit.Key);
             CurrentEventKey = gds.FirstEventKey();
             OnStateChanged?.Invoke();
         }
@@ -101,6 +106,9 @@ namespace HWebProto.Services
                 case "Stat":
                     ModifyStat(effect.DataKey, effect.Value, effect.Op);
                     break;
+                case "Party":
+                    ModifyParty(effect.DataKey, effect.Op);
+                    break;
                 case "Exp":
                     Exp = ApplyOp(Exp, (int)effect.Value, effect.Op);
                     TryLevelUp();
@@ -118,6 +126,7 @@ namespace HWebProto.Services
                 "Item"           => Inventory.TryGetValue(cond.DataKey, out var cnt) ? cnt : 0,
                 "Flag"           => Flags.TryGetValue(cond.DataKey, out var f)       ? f   : 0,
                 "Stat"           => GetStat(cond.DataKey),
+                "Party"          => PartyKeys.Contains(cond.DataKey) ? 1 : 0,
                 "Level"          => Level,
                 _                => 0
             };
@@ -206,6 +215,25 @@ namespace HWebProto.Services
         {
             Flags.TryGetValue(key, out var cur);
             Flags[key] = ApplyOp((int)cur, (int)value, op);
+        }
+
+        void ModifyParty(long key, string op)
+        {
+            switch (op)
+            {
+                case "Subtract":
+                    PartyKeys.Remove(key);
+                    break;
+                case "Set":
+                case "Assign":
+                    PartyKeys.Clear();
+                    if (key > 0) PartyKeys.Add(key);
+                    break;
+                default:
+                    if (key > 0 && !PartyKeys.Contains(key))
+                        PartyKeys.Add(key);
+                    break;
+            }
         }
 
         void ModifyStat(long key, long value, string op)
