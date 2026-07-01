@@ -44,9 +44,9 @@
         </div>
     </div>
 
-    <!-- 능력치 -->
+    <!-- 스탯 -->
     <div class="section-title">
-        능력치
+        스탯
         @if (GSS.FreePoints > 0)
         {
             <span class="tag tag-gold" style="margin-left:6px">잔여 @(GSS.FreePoints)pt</span>
@@ -100,12 +100,10 @@
     record StatDef(string Key, string Name, string Icon, Func<GameStateService, int> Get);
     readonly StatDef[] _statDefs =
     {
-        new("Strength",     "힘",   "💪", g => g.Strength),
-        new("Dexterity",    "민첩", "🏃", g => g.Dexterity),
-        new("Constitution", "건강", "❤️", g => g.Constitution),
-        new("Intelligence", "지성", "🧠", g => g.Intelligence),
-        new("Wisdom",       "지혜", "🦉", g => g.Wisdom),
-        new("Charisma",     "매력", "✨", g => g.Charisma),
+        new("Mental",    "정신력", "M", g => g.MentalStat),
+        new("Vitality",  "체력",   "V", g => g.Vitality),
+        new("Strength",  "완력",   "S", g => g.Strength),
+        new("Dexterity", "민첩성", "D", g => g.Dexterity),
     };
 
     protected override void OnInitialized()

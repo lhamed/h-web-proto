@@ -5,7 +5,7 @@ using HWebProto.Models;
 namespace HWebProto.Services
 {
     /// <summary>
-    /// 런타임 게임 상태 — HP, Mental, 인벤토리, 장비, 플래그, 현재 이벤트 Key.
+    /// 런타임 게임 상태 — HP, Mental, 플레이어 4스탯, 인벤토리, 장비, 플래그, 현재 이벤트 Key.
     /// </summary>
     public class GameStateService
     {
@@ -19,13 +19,11 @@ namespace HWebProto.Services
         public int NextExp   { get; private set; } = 100;
         public bool IsGameOver => Hp <= 0;
 
-        // ── 능력치 ───────────────────────────────────────────────────────────
-        public int Strength     { get; private set; } = 10;
-        public int Dexterity    { get; private set; } = 10;
-        public int Constitution { get; private set; } = 10;
-        public int Intelligence { get; private set; } = 10;
-        public int Wisdom       { get; private set; } = 10;
-        public int Charisma     { get; private set; } = 10;
+        // ── 플레이어 스탯 (Unity PlayerStatType: 0 정신력, 1 체력, 2 완력, 3 민첩성) ───
+        public int MentalStat { get; private set; } = 1;
+        public int Vitality   { get; private set; } = 1;
+        public int Strength   { get; private set; } = 1;
+        public int Dexterity  { get; private set; } = 1;
         public int FreePoints   { get; private set; } = 3;
 
         // ── 인벤토리 (아이템Key → 갯수) ──────────────────────────────────────
@@ -57,6 +55,10 @@ namespace HWebProto.Services
             {
                 MaxHp = playerUnit.MaxHP;
                 Hp    = MaxHp;
+                MentalStat = Math.Max(1, playerUnit.Mental);
+                Vitality   = Math.Max(1, playerUnit.Vitality);
+                Strength   = Math.Max(1, playerUnit.Strength);
+                Dexterity  = Math.Max(1, playerUnit.Dexterity);
                 // 장비 초기화
                 Equipment.Clear();
                 foreach (var slot in new[] { "head","left","body","right","shoes","ring1","ring2" })
@@ -68,6 +70,7 @@ namespace HWebProto.Services
             else
             {
                 Hp = MaxHp = 6;
+                MentalStat = Vitality = Strength = Dexterity = 1;
             }
             Mental = MaxMental = 10;
             Level  = 1; Exp = 0; FreePoints = 3;
@@ -95,6 +98,9 @@ namespace HWebProto.Services
                 case "Flag":
                     ModifyFlag(effect.DataKey, effect.Value, effect.Op);
                     break;
+                case "Stat":
+                    ModifyStat(effect.DataKey, effect.Value, effect.Op);
+                    break;
                 case "Exp":
                     Exp = ApplyOp(Exp, (int)effect.Value, effect.Op);
                     TryLevelUp();
@@ -111,6 +117,7 @@ namespace HWebProto.Services
                 "Mental"         => Mental,
                 "Item"           => Inventory.TryGetValue(cond.DataKey, out var cnt) ? cnt : 0,
                 "Flag"           => Flags.TryGetValue(cond.DataKey, out var f)       ? f   : 0,
+                "Stat"           => GetStat(cond.DataKey),
                 "Level"          => Level,
                 _                => 0
             };
@@ -133,12 +140,10 @@ namespace HWebProto.Services
             if (FreePoints <= 0) return false;
             switch (stat)
             {
-                case "Strength":     Strength++;     break;
-                case "Dexterity":    Dexterity++;    break;
-                case "Constitution": Constitution++; MaxHp++; Hp = Math.Min(Hp + 1, MaxHp); break;
-                case "Intelligence": Intelligence++; break;
-                case "Wisdom":       Wisdom++;       break;
-                case "Charisma":     Charisma++;     break;
+                case "Mental":   MentalStat++; break;
+                case "Vitality": Vitality++; break;
+                case "Strength": Strength++; break;
+                case "Dexterity": Dexterity++; break;
                 default: return false;
             }
             FreePoints--;
@@ -201,6 +206,48 @@ namespace HWebProto.Services
         {
             Flags.TryGetValue(key, out var cur);
             Flags[key] = ApplyOp((int)cur, (int)value, op);
+        }
+
+        void ModifyStat(long key, long value, string op)
+        {
+            long current = GetStat(key);
+            long next = op switch
+            {
+                "Add" => current + value,
+                "Subtract" => current - value,
+                "Set" or "Assign" => value,
+                _ => current + value
+            };
+
+            SetStat(key, ClampToInt(next));
+        }
+
+        long GetStat(long key) => key switch
+        {
+            0 => MentalStat,
+            1 => Vitality,
+            2 => Strength,
+            3 => Dexterity,
+            _ => 0
+        };
+
+        void SetStat(long key, int value)
+        {
+            value = Math.Max(1, value);
+            switch (key)
+            {
+                case 0: MentalStat = value; break;
+                case 1: Vitality = value; break;
+                case 2: Strength = value; break;
+                case 3: Dexterity = value; break;
+            }
+        }
+
+        static int ClampToInt(long value)
+        {
+            if (value > int.MaxValue) return int.MaxValue;
+            if (value < int.MinValue) return int.MinValue;
+            return (int)value;
         }
 
         static int ApplyOp(int cur, int value, string op) => op switch
