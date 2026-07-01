@@ -51,6 +51,7 @@ namespace HWebProto.Models
         public string         SelectionTextKey      { get; set; } = "";
         public string         ResultTextKey         { get; set; } = "";
         public List<EffectDto> Effects              { get; set; } = new();
+        public List<ContentBlockDto> BranchBlocks   { get; set; } = new();
         public long           BattleVictoryEventKey { get; set; }
         public long           BattleDefeatEventKey  { get; set; }
         public UIEffectDto    UIEffect              { get; set; } = new();

@@ -116,6 +116,8 @@ else
 
     HWebProto.Models.GameEventDto?      _event;
     HWebProto.Models.ContentBlockDto?   _block;
+    List<HWebProto.Models.ContentBlockDto>? _activeBlocks;
+    HWebProto.Models.SelectionDto? _pendingBranchSelection;
     List<VisibleItem> _visibleItems = new();
     int  _blockIdx, _itemIdx;
     bool _showSelections, _popupVisible, _allDone;
@@ -146,6 +148,8 @@ else
 
         _sceneBgIcon = _bgIcons[_rng.Next(_bgIcons.Length)];
         _blockIdx = 0; _itemIdx = 0;
+        _activeBlocks = _event.ContentBlocks ?? new();
+        _pendingBranchSelection = null;
         _showSelections = false; _allDone = false;
         _visibleItems.Clear();
         LoadBlock();
@@ -153,12 +157,13 @@ else
 
     void LoadBlock()
     {
-        if (_event == null || _blockIdx >= _event.ContentBlocks.Count)
+        var blocks = _activeBlocks ?? _event?.ContentBlocks;
+        if (blocks == null || _blockIdx >= blocks.Count)
         {
             _showSelections = false; _allDone = true;
             return;
         }
-        _block = _event.ContentBlocks[_blockIdx];
+        _block = blocks[_blockIdx];
         _itemIdx = 0;
         ShowNextItem();
     }
@@ -206,6 +211,7 @@ else
     void ChooseSelection(HWebProto.Models.SelectionDto sel)
     {
         _showSelections = false;
+        _pendingBranchSelection = null;
 
         // 공통 이펙트 적용
         foreach (var e in _block?.CommonEffects ?? new())
@@ -241,11 +247,30 @@ else
             _popupMsg   = resultText;
             _popupVisible = true;
             _nextEventKey = 0;
+            _pendingBranchSelection = sel.BranchBlocks?.Count > 0 ? sel : null;
         }
         else
         {
-            AdvanceBlock();
+            ContinueAfterSelection(sel);
         }
+    }
+
+    void ContinueAfterSelection(HWebProto.Models.SelectionDto sel)
+    {
+        if (sel.BranchBlocks?.Count > 0)
+        {
+            var blocks = _activeBlocks ?? _event?.ContentBlocks ?? new();
+            var remaining = blocks.Skip(_blockIdx + 1);
+            _activeBlocks = sel.BranchBlocks.Concat(remaining).ToList();
+            _blockIdx = 0;
+            _visibleItems.Clear();
+            _showSelections = false;
+            _pendingBranchSelection = null;
+            LoadBlock();
+            return;
+        }
+
+        AdvanceBlock();
     }
 
     static bool IsBattleEffect(HWebProto.Models.EffectDto effect)
@@ -270,7 +295,14 @@ else
             Nav.NavigateTo("battle");
             return;
         }
-        if (_allDone || _event?.ContentBlocks.Count <= _blockIdx + 1)
+        if (_pendingBranchSelection != null)
+        {
+            ContinueAfterSelection(_pendingBranchSelection);
+            return;
+        }
+
+        var blockCount = (_activeBlocks ?? _event?.ContentBlocks)?.Count ?? 0;
+        if (_allDone || blockCount <= _blockIdx + 1)
         {
             // 다음 이벤트 결정
             long next = ResolveNextEvent();

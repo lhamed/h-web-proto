@@ -304,6 +304,7 @@
     // current event/block pointers
     HWebProto.Models.GameEventDto?    _evt;
     HWebProto.Models.ContentBlockDto? _block;
+    List<HWebProto.Models.ContentBlockDto>? _activeBlocks;
     int _blockIdx, _itemIdx;
     bool _typing;
 
@@ -363,6 +364,7 @@
         if (!ok) { _evt = null; StartDemoMode(); return; }
 
         _blockIdx = 0;
+        _activeBlocks = _evt.ContentBlocks ?? new();
         _contentItems.Clear();
         _showSelections = false;
         _showTopInfo    = false;
@@ -382,7 +384,7 @@
         while (!ct.IsCancellationRequested)
         {
             // ── 이벤트 끝 체크 ──────────────────────────────────────────────
-            var blocks = _evt?.ContentBlocks;
+            var blocks = _activeBlocks ?? _evt?.ContentBlocks;
             if (blocks == null || _blockIdx >= blocks.Count)
             {
                 _showSelections = false;
@@ -584,13 +586,29 @@
 
         if (!string.IsNullOrEmpty(resultText))
         {
-            ShowPopup("", resultText, "확인", () => { _blockIdx++; RunEventAsync(); });
+            ShowPopup("", resultText, "확인", () => ContinueAfterSelection(src));
+        }
+        else
+        {
+            ContinueAfterSelection(src);
+        }
+    }
+
+    void ContinueAfterSelection(HWebProto.Models.SelectionDto? selection)
+    {
+        if (selection?.BranchBlocks?.Count > 0)
+        {
+            var blocks = _activeBlocks ?? _evt?.ContentBlocks ?? new();
+            var remaining = blocks.Skip(_blockIdx + 1);
+            _activeBlocks = selection.BranchBlocks.Concat(remaining).ToList();
+            _blockIdx = 0;
         }
         else
         {
             _blockIdx++;
-            RunEventAsync();
         }
+
+        RunEventAsync();
     }
 
     static bool IsBattleEffect(HWebProto.Models.EffectDto effect)
