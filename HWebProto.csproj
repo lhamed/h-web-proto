@@ -11,4 +11,14 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.5" PrivateAssets="all" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <LatestMBytesPath>../Hoheup/Assets/Project/Resources/M.bytes</LatestMBytesPath>
+  </PropertyGroup>
+
+  <Target Name="CopyLatestMBytes" BeforeTargets="Build;Publish" Condition="Exists('$(LatestMBytesPath)')">
+    <MakeDir Directories="wwwroot/data" />
+    <Copy SourceFiles="$(LatestMBytesPath)" DestinationFiles="wwwroot/data/M.bytes" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="Copied latest M.bytes from $(LatestMBytesPath) to wwwroot/data/M.bytes" />
+  </Target>
+
 </Project>

@@ -22,9 +22,12 @@ namespace HWebProto.Services
         public bool IsLoaded => Data != null;
         public bool IsUserLoaded { get; private set; }
         public string LoadedFileName { get; private set; } = "";
+        public bool IsMasterDataLoaded { get; private set; }
+        public string MasterDataFileName { get; private set; } = "";
 
         // 로컬라이제이션 캐시: key → 텍스트
         readonly Dictionary<string, string> _locCache = new();
+        JsonElement? _masterLocalization;
         public string Lang { get; set; } = "ko";
 
         public void Load(byte[] bytes, string fileName = "", bool userLoaded = false)
@@ -37,57 +40,99 @@ namespace HWebProto.Services
             BuildLocalizationCache();
         }
 
+        public void LoadMasterData(byte[] bytes, string fileName = "M.bytes")
+        {
+            string json = System.Text.Encoding.UTF8.GetString(bytes);
+            var root = JsonSerializer.Deserialize<JsonElement>(json, _opts);
+            _masterLocalization = root;
+            IsMasterDataLoaded = true;
+            MasterDataFileName = fileName;
+            BuildLocalizationCache();
+        }
+
         void BuildLocalizationCache()
         {
             _locCache.Clear();
-            if (Data?.Localization is not JsonElement root) return;
+
+            if (Data?.Localization is JsonElement root)
+                BuildLocalizationCache(root);
+
+            if (_masterLocalization is JsonElement masterRoot)
+                BuildLocalizationCache(masterRoot);
+        }
+
+        void BuildLocalizationCache(JsonElement root)
+        {
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                BuildLocalizationCacheFromRows(root);
+                return;
+            }
+
             if (root.ValueKind != JsonValueKind.Object) return;
 
             // MasterData 형식: { "SheetName": [ {...row...}, ... ] }
             foreach (var sheet in root.EnumerateObject())
             {
                 if (sheet.Value.ValueKind != JsonValueKind.Array) continue;
-                foreach (var row in sheet.Value.EnumerateArray())
+                BuildLocalizationCacheFromRows(sheet.Value);
+            }
+        }
+
+        void BuildLocalizationCacheFromRows(JsonElement rows)
+        {
+            foreach (var row in rows.EnumerateArray())
+            {
+                if (row.ValueKind != JsonValueKind.Object) continue;
+                string? key = null;
+                foreach (var prop in row.EnumerateObject())
                 {
-                    if (row.ValueKind != JsonValueKind.Object) continue;
-                    string? key = null;
-                    // Key 컬럼 찾기 (대소문자 무시)
+                    if (prop.Name.Equals("Key", StringComparison.OrdinalIgnoreCase))
+                    {
+                        key = prop.Value.GetString();
+                        break;
+                    }
+                }
+                if (string.IsNullOrEmpty(key)) continue;
+
+                string? text = null;
+                foreach (var prop in row.EnumerateObject())
+                {
+                    if (IsLanguageColumn(prop.Name) && prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        text = prop.Value.GetString();
+                        if (!string.IsNullOrEmpty(text)) break;
+                    }
+                }
+                if (text == null)
+                {
                     foreach (var prop in row.EnumerateObject())
                     {
-                        if (prop.Name.Equals("Key", StringComparison.OrdinalIgnoreCase))
+                        if (prop.Name.Equals("Key", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (prop.Value.ValueKind == JsonValueKind.String)
                         {
-                            key = prop.Value.GetString();
+                            text = prop.Value.GetString();
                             break;
                         }
                     }
-                    if (string.IsNullOrEmpty(key)) continue;
-
-                    // 우선순위: 현재 Lang → "ko" → 첫 번째 문자열 컬럼
-                    string? text = null;
-                    foreach (var prop in row.EnumerateObject())
-                    {
-                        if (prop.Name.Equals(Lang, StringComparison.OrdinalIgnoreCase) ||
-                            prop.Name.Equals("ko", StringComparison.OrdinalIgnoreCase))
-                        {
-                            text = prop.Value.GetString();
-                            if (text != null) break;
-                        }
-                    }
-                    if (text == null)
-                    {
-                        foreach (var prop in row.EnumerateObject())
-                        {
-                            if (prop.Value.ValueKind == JsonValueKind.String)
-                            {
-                                text = prop.Value.GetString();
-                                break;
-                            }
-                        }
-                    }
-                    if (key != null && text != null)
-                        _locCache[key] = text;
                 }
+                if (text != null)
+                    _locCache[key] = text;
             }
+        }
+
+        bool IsLanguageColumn(string column)
+        {
+            string lang = Lang.Trim();
+            if (column.Equals(lang, StringComparison.OrdinalIgnoreCase)) return true;
+
+            return lang.Equals("ko", StringComparison.OrdinalIgnoreCase) ||
+                   lang.Equals("kr", StringComparison.OrdinalIgnoreCase) ||
+                   lang.Equals("ko-KR", StringComparison.OrdinalIgnoreCase)
+                ? column.Equals("Korean", StringComparison.OrdinalIgnoreCase) ||
+                  column.Equals("ko", StringComparison.OrdinalIgnoreCase)
+                : column.Equals("English", StringComparison.OrdinalIgnoreCase) ||
+                  column.Equals("en", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
