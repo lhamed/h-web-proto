@@ -166,6 +166,7 @@ namespace HWebProto.Models
     public class BattleDataDto
     {
         public long Key             { get; set; }
+        public string BackgroundKey { get; set; } = "";
         public long MonsterGroupKey { get; set; }
     }
 }
