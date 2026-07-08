@@ -13,12 +13,19 @@
 
   <PropertyGroup>
     <LatestMBytesPath>../Hoheup/Assets/Project/Resources/M.bytes</LatestMBytesPath>
+    <LatestExportedBytesPath>../EXPORTED.bytes</LatestExportedBytesPath>
   </PropertyGroup>
 
   <Target Name="CopyLatestMBytes" BeforeTargets="Build;Publish" Condition="Exists('$(LatestMBytesPath)')">
     <MakeDir Directories="wwwroot/data" />
     <Copy SourceFiles="$(LatestMBytesPath)" DestinationFiles="wwwroot/data/M.bytes" SkipUnchangedFiles="true" />
     <Message Importance="high" Text="Copied latest M.bytes from $(LatestMBytesPath) to wwwroot/data/M.bytes" />
+  </Target>
+
+  <Target Name="CopyLatestExportedBytes" BeforeTargets="Build;Publish" Condition="Exists('$(LatestExportedBytesPath)')">
+    <MakeDir Directories="wwwroot/data" />
+    <Copy SourceFiles="$(LatestExportedBytesPath)" DestinationFiles="wwwroot/data/EXPORTED.bytes" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="Copied latest EXPORTED.bytes from $(LatestExportedBytesPath) to wwwroot/data/EXPORTED.bytes" />
   </Target>
 
 </Project>

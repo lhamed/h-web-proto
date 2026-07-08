@@ -22,6 +22,7 @@ namespace HWebProto.Models
     public class GameEventDto
     {
         public long                    Key              { get; set; }
+        public bool                    ExcludeFromInitialRandomPool { get; set; }
         public List<ConditionDto>      Conditions       { get; set; } = new();
         public List<ContentBlockDto>   ContentBlocks    { get; set; } = new();
         public string                  NextEventMode    { get; set; } = "First";
@@ -43,6 +44,7 @@ namespace HWebProto.Models
         public string SpeakerNameKey { get; set; } = "";
         public string ExpressionPath { get; set; } = "";
         public string ImagePath      { get; set; } = "";
+        public List<SelectionDto> Selections { get; set; } = new();
         public UIEffectDto UIEffect  { get; set; } = new();
     }
 
@@ -124,8 +126,10 @@ namespace HWebProto.Models
         public int    Strength       { get; set; } = 1;
         public int    Dexterity      { get; set; } = 1;
         public long   AttackDiceKey  { get; set; }
+        public bool   ParticipatesInBattle { get; set; } = true;
         public bool   CanEquipItems  { get; set; } = true;
         public long   WeaponItemKey  { get; set; }
+        public long   AuxiliaryItemKey { get; set; }
         public int    WeaponAmmo     { get; set; }
         public long   ArmorItemKey   { get; set; }
         public long   LeftHandItemKey  { get; set; }
